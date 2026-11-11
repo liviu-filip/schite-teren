@@ -10,6 +10,7 @@
 <style>
   :root { --bara:#1f4e79; --activ:#f0a020; }
   [hidden] { display:none !important; }
+  input, textarea { -webkit-user-select:text; user-select:text; touch-action:manipulation; }
   * { box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
   html,body { margin:0; height:100%; overflow:hidden; background:#fff; font-family:system-ui,Roboto,sans-serif; }
   #bara { position:fixed; top:0; left:0; right:0; height:60px; background:var(--bara); display:flex; align-items:center; gap:6px; padding:0 8px; overflow-x:auto; }
