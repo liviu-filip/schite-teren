@@ -241,7 +241,7 @@ function deseneazaSchita(g, s, opt) {
       laturaText = sens > 0;   // textul pe partea opusă deschiderii ușii (aproximativ)
     }
     g.lineCap = 'round';
-    const et = (o.tip === 'geam' ? 'G ' : 'U ') + (o.dim || '?');
+    const et = (o.tip === 'geam' ? 'G ' + (o.dim || '?') : 'U');
     textPeLinie(g, a, b, et, px, cul, o.tip === 'usa' ? !laturaText : false);
   }
   // cotele
@@ -402,8 +402,11 @@ async function termina() {
     a = Math.max(0, k.t0 - jum); b = Math.min(1, k.t0 + jum);
   }
   deseneaza();
-  const dim = await intreaba(k.unealta === 'geam' ? 'Geam: lățime x înălțime (cm), ex. 100x120' : 'Ușă: lățime (cm), ex. 80', '', k.unealta === 'geam' ? 'dim' : 'decimal');
-  if (dim === null) { deseneaza(); return; }
+  let dim = '';                               /* la ușă lățimea nu contează: fără întrebare */
+  if (k.unealta === 'geam') {
+    dim = await intreaba('Geam: lățime x înălțime (cm), ex. 100x120', '', 'dim');
+    if (dim === null) { deseneaza(); return; }
+  }
   modifica(() => schita.deschideri.push({ id: uid(), tip: k.unealta, perete: w.id, a, b, dim: dim.trim(), deschidere: 0 }));
 }
 
@@ -427,7 +430,7 @@ function actualizeazaActiuni() {
   if (!e) sel = null;
   $('#actiuni').hidden = !sel;
   if (!sel) return;
-  $('#aDim').hidden = sel.tip === 'perete';
+  $('#aDim').hidden = sel.tip === 'perete' || (sel.tip === 'deschidere' && e.tip === 'usa');
   $('#aIntoarce').hidden = !(sel.tip === 'deschidere' && e.tip === 'usa');
 }
 $('#aSterge').addEventListener('click', () => {
