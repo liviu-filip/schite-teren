@@ -26,6 +26,9 @@
   #modal .cutie { background:#fff; border-radius:12px; padding:20px; width:min(520px,92vw); max-height:86vh; overflow:auto; }
   #modal h3 { margin:0 0 12px; font-size:19px; }
   #modal input { width:100%; font-size:22px; padding:10px; border:1px solid #999; border-radius:8px; -webkit-user-select:text; user-select:text; }
+  #modal .tastatura { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:12px; }
+  #modal .tastatura button { height:64px; font-size:26px; border:0; border-radius:10px; background:#e8eef5; }
+  #modal .tastatura button.alt { background:#d5dde6; }
   #modal .butoane { display:flex; justify-content:flex-end; gap:10px; margin-top:16px; flex-wrap:wrap; }
   #modal .butoane button, #modal .lista button { height:48px; padding:0 18px; font-size:17px; border:0; border-radius:8px; background:#e8eef5; }
   #modal .butoane button.ok { background:var(--bara); color:#fff; }
@@ -399,7 +402,7 @@ async function termina() {
     a = Math.max(0, k.t0 - jum); b = Math.min(1, k.t0 + jum);
   }
   deseneaza();
-  const dim = await intreaba(k.unealta === 'geam' ? 'Geam: lățime x înălțime (cm), ex. 100x120' : 'Ușă: lățime (cm), ex. 80', '', 'text');
+  const dim = await intreaba(k.unealta === 'geam' ? 'Geam: lățime x înălțime (cm), ex. 100x120' : 'Ușă: lățime (cm), ex. 80', '', k.unealta === 'geam' ? 'dim' : 'decimal');
   if (dim === null) { deseneaza(); return; }
   modifica(() => schita.deschideri.push({ id: uid(), tip: k.unealta, perete: w.id, a, b, dim: dim.trim(), deschidere: 0 }));
 }
@@ -440,7 +443,7 @@ $('#aIntoarce').addEventListener('click', () => { const e = element(sel); if (e)
 $('#aDim').addEventListener('click', async () => {
   const e = element(sel); if (!e) return;
   const cota = sel.tip === 'cota';
-  const v = await intreaba(cota ? 'Cota (cm)' : (e.tip === 'geam' ? 'Geam: lățime x înălțime (cm)' : 'Ușă: lățime (cm)'), cota ? e.val : e.dim, cota ? 'decimal' : 'text');
+  const v = await intreaba(cota ? 'Cota (cm)' : (e.tip === 'geam' ? 'Geam: lățime x înălțime (cm)' : 'Ușă: lățime (cm)'), cota ? e.val : e.dim, (cota || e.tip !== 'geam') ? 'decimal' : 'dim');
   if (v === null) return;
   const id = sel.id;
   modifica(() => { const x = (cota ? schita.cote : schita.deschideri).find(q => q.id === id); if (cota) x.val = v.trim(); else x.dim = v.trim(); });
@@ -450,14 +453,30 @@ $('#aDim').addEventListener('click', async () => {
 function intreaba(titlu, valoare, mod) {
   return new Promise(rez => {
     const m = $('#modal');
-    m.innerHTML = '<div class="cutie"><h3></h3><input><div class="butoane"><button class="nu">Anulează</button><button class="ok">OK</button></div></div>';
+    const tast = mod === 'decimal' || mod === 'dim';   /* numere: tastatura proprie, fără tastatura sistemului */
+    const taste = tast ? ['7','8','9','4','5','6','1','2','3',mod === 'dim' ? 'x' : ',','0','⌫'] : [];
+    m.innerHTML = '<div class="cutie"><h3></h3><input><div class="tastatura"></div><div class="butoane"><button class="nu">Anulează</button><button class="ok">OK</button></div></div>';
     m.querySelector('h3').textContent = titlu;
-    const inp = m.querySelector('input'); inp.value = valoare || ''; inp.setAttribute('inputmode', mod || 'text');
+    const inp = m.querySelector('input'); inp.value = valoare || '';
     const gata = v => { m.hidden = true; m.innerHTML = ''; rez(v); };
+    if (tast) {
+      inp.setAttribute('inputmode', 'none'); inp.readOnly = true;
+      let proaspat = !!inp.value;                     /* prima tastă înlocuiește valoarea veche */
+      const t = m.querySelector('.tastatura');
+      taste.forEach(c => {
+        const b = document.createElement('button'); b.textContent = c; if (c === '⌫' || c === 'x' || c === ',') b.className = 'alt';
+        b.onclick = () => {
+          if (c === '⌫') inp.value = proaspat ? '' : inp.value.slice(0, -1);
+          else inp.value = (proaspat ? '' : inp.value) + (c === ',' ? '.' : c);
+          proaspat = false;
+        };
+        t.appendChild(b);
+      });
+    } else { inp.setAttribute('inputmode', mod || 'text'); }
     m.querySelector('.ok').onclick = () => gata(inp.value);
     m.querySelector('.nu').onclick = () => gata(null);
     inp.onkeydown = e => { if (e.key === 'Enter') gata(inp.value); if (e.key === 'Escape') gata(null); };
-    m.hidden = false; setTimeout(() => inp.focus(), 50);
+    m.hidden = false; if (!tast) setTimeout(() => inp.focus(), 50);
   });
 }
 function confirma(titlu) {
