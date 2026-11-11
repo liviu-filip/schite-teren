@@ -57,6 +57,7 @@
   <button id="btnRedo" class="mic" title="Refă">↷</button>
   <button id="btnFit" class="mic" title="Toată schița pe ecran">⤢</button>
   <span class="sep"></span>
+  <button id="btnPoze">📷 Poze</button>
   <button id="btnExport">Trimite</button>
 </div>
 <canvas id="c"></canvas>
@@ -604,6 +605,7 @@ function arataLista() {
       m.hidden = true;
       if (await confirma('Ștergi schița „' + s.nume + '”?')) {
         const t = citesteToate(); delete t[s.id]; scrieToate(t);
+        for (const q of await pozeSchita(s.id)) await pozeSterge(q.id);
         if (s.id === schita.id) { const rest = Object.values(t); deschide(rest[0] || nouaSchita()); }
       }
       arataLista();
@@ -655,17 +657,102 @@ function descarca(f) {
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 $('#btnExport').addEventListener('click', async () => {
-  const c = randeazaPNG(); if (!c) { toast('Schița e goală'); return; }
-  const baza = numeFisier();
-  const png = await new Promise(r => c.toBlob(r, 'image/png'));
-  const json = new Blob([JSON.stringify(dateExport(), null, 1)], { type: 'text/plain' });
-  const fis = [new File([png], baza + '.png', { type: 'image/png' }), new File([json], baza + '.json', { type: 'text/plain' })];
+  const c = randeazaPNG(), poze = await pozeSchita(schita.id);
+  if (!c && !poze.length) { toast('Schița e goală'); return; }
+  const baza = numeFisier(), fis = [];
+  if (c) {
+    const png = await new Promise(r => c.toBlob(r, 'image/png'));
+    const json = new Blob([JSON.stringify(dateExport(), null, 1)], { type: 'text/plain' });
+    fis.push(new File([png], baza + '.png', { type: 'image/png' }), new File([json], baza + '.json', { type: 'text/plain' }));
+  }
+  for (const q of poze) fis.push(new File([q.blob], q.nume + '.jpg', { type: 'image/jpeg' }));
   if (navigator.canShare && navigator.canShare({ files: fis })) {
     try { await navigator.share({ files: fis, title: baza }); return; }
     catch (e) { if (e.name === 'AbortError') return; }
   }
   fis.forEach(descarca); toast('Salvate în Descărcări');
 });
+
+/* ---------- poze: buletin, acte (camera tabletei) ---------- */
+/* Pozele stau în memoria tabletei (IndexedDB), legate de schița deschisă, până le ștergi tu; „Trimite” le duce în Drive odată cu schița. */
+let _dbp = null;
+function dbPoze() {
+  return _dbp || (_dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('schite_poze', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('poze', { keyPath: 'id' });
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+}
+async function pozeOp(mod, fn) {
+  const db = await dbPoze();
+  return new Promise((res, rej) => { const t = db.transaction('poze', mod), r = fn(t.objectStore('poze')); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); });
+}
+const pozeAdauga = p => pozeOp('readwrite', st => st.put(p));
+const pozeSterge = id => pozeOp('readwrite', st => st.delete(id));
+async function pozeSchita(id) {
+  try { return ((await pozeOp('readonly', st => st.getAll())) || []).filter(p => p.schita === id).sort((a, b) => a.creat.localeCompare(b.creat)); }
+  catch (e) { return []; }
+}
+async function micsoreaza(fisier, max) {
+  let bmp;
+  try { bmp = await createImageBitmap(fisier, { imageOrientation: 'from-image' }); }
+  catch (e) { bmp = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(fisier); }); }
+  const w0 = bmp.width || bmp.naturalWidth, h0 = bmp.height || bmp.naturalHeight, f = Math.min(1, max / Math.max(w0, h0));
+  const c = document.createElement('canvas'); c.width = Math.round(w0 * f); c.height = Math.round(h0 * f);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+}
+function curataNume(n) { return (n || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '').toLowerCase(); }
+function faPoza(tip, nume) {
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.setAttribute('capture', 'environment');
+  inp.onchange = async () => {
+    const f = inp.files && inp.files[0]; if (!f) return;
+    try {
+      const blob = await micsoreaza(f, 1600), existente = (await pozeSchita(schita.id)).map(p => p.nume);
+      let n = nume;
+      if (tip === 'act') { let i = 1; while (existente.includes('act_' + i)) i++; n = 'act_' + i; }
+      else if (existente.includes(n)) { let i = 2; while (existente.includes(n + '_' + i)) i++; n = n + '_' + i; }
+      await pozeAdauga({ id: schita.id + ':' + uid(), schita: schita.id, nume: n, creat: acum(), blob });
+      toast('Salvată: ' + n);
+    } catch (e) { toast('Nu am putut salva poza'); }
+    arataPoze();
+  };
+  inp.click();
+}
+async function arataPoze() {
+  const m = $('#modal'), poze = await pozeSchita(schita.id);
+  m.innerHTML = '<div class="cutie"><h3></h3><div class="lista tipuri"></div><div class="lista pozele" style="margin-top:14px"></div><div class="butoane"><button class="nu">Închide</button></div></div>';
+  m.querySelector('h3').textContent = 'Poze pentru „' + schita.nume + '” (' + poze.length + ')';
+  const tipuri = m.querySelector('.tipuri');
+  const optiuni = [['Buletin față', 'buletin_fata'], ['Buletin verso', 'buletin_verso'], ['Act de proprietate', 'act'], ['Altceva…', 'altceva']];
+  for (const [et, cod] of optiuni) {
+    const b = document.createElement('button'); b.textContent = '📷 ' + et;
+    b.onclick = async () => {
+      if (cod === 'altceva') {
+        const n = await intreaba('Numele pozei (ex. aviz, factura)', '', 'text');
+        const c = curataNume(n); if (!c) { arataPoze(); return; }
+        faPoza('altceva', c);
+      } else faPoza(cod, cod);
+    };
+    tipuri.append(b);
+  }
+  const l = m.querySelector('.pozele');
+  const urls = [];
+  for (const q of poze) {
+    const r = document.createElement('div'); r.className = 'rand';
+    const im = document.createElement('img'); const u = URL.createObjectURL(q.blob); urls.push(u); im.src = u;
+    im.style.cssText = 'height:56px;width:76px;object-fit:cover;border-radius:6px;background:#eee';
+    const b = document.createElement('button'); b.className = 'nume'; b.innerHTML = '<span></span><small></small>';
+    b.querySelector('span').textContent = q.nume + '.jpg'; b.querySelector('small').textContent = dataScurta(q.creat) + ' · ' + Math.round(q.blob.size / 1024) + ' KB';
+    b.onclick = () => { window.open(u, '_blank'); };
+    const x = document.createElement('button'); x.className = 'sterge'; x.textContent = 'Șterge';
+    x.onclick = async () => { urls.forEach(URL.revokeObjectURL); await pozeSterge(q.id); arataPoze(); };
+    r.append(im, b, x); l.append(r);
+  }
+  m.querySelector('.nu').onclick = () => { urls.forEach(URL.revokeObjectURL); m.hidden = true; m.innerHTML = ''; };
+  m.hidden = false;
+}
+$('#btnPoze').addEventListener('click', arataPoze);
 
 /* ---------- pornirea ---------- */
 window.addEventListener('resize', redimensioneaza);
