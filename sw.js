@@ -1,5 +1,5 @@
 // Lucrul offline: fișierele aplicației stau în memoria tabletei; la fiecare pornire cu internet se aduc versiunile noi.
-const V = 'schite-v14';
+const V = 'schite-v15';
 const F = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(F))); self.skipWaiting(); });
 self.addEventListener('activate', e => {

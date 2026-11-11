@@ -771,6 +771,7 @@ async function arataMandat() {
     '<div class="butoane"><button id="mSterge">Șterge semnătura</button><button class="nu">Anulează</button><button class="ok">Salvează</button></div></div>';
   const nm = $('#mNume'), lc = $('#mLoc');
   if (vechi && vechi.solicitant) { nm.value = vechi.solicitant.nume || ''; lc.value = vechi.solicitant.localitate || ''; }
+  else if (schita.nume && schita.nume !== 'Schiță fără nume') nm.value = schita.nume;   /* numele schiței se preia în mandat */
   const esc = t => t.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   const text = () => {
     const nume = esc(nm.value.trim().toUpperCase()) || '……………', loc = esc(lc.value.trim().toUpperCase());
@@ -809,6 +810,9 @@ async function arataMandat() {
     const png = await new Promise(r => cs.toBlob(r, 'image/png'));
     await pozeAdauga({ id: schita.id + ':mandat', schita: schita.id, nume: 'mandat_date', ext: '.json', creat: acum(), blob: new Blob([JSON.stringify(date, null, 1)], { type: 'application/json' }) });
     await pozeAdauga({ id: schita.id + ':semnatura', schita: schita.id, nume: 'semnatura', ext: '.png', creat: acum(), blob: png });
+    if (!schita.nume || schita.nume === 'Schiță fără nume') {   /* schița fără nume ia numele din mandat */
+      schita.nume = date.solicitant.nume; $('#titlu').textContent = schita.nume; salveaza();
+    }
     toast('Mandat salvat'); arataPoze();
   };
 }
