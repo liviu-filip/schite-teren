@@ -750,18 +750,21 @@ function citesteMandatar() { try { return JSON.parse(localStorage.getItem('schit
 async function datePozaText(id) {
   try { const r = (await pozeSchita(schita.id)).find(x => x.id === id); return r ? JSON.parse(await r.blob.text()) : null; } catch (e) { return null; }
 }
+async function cereMandatar() {                  /* datele mandatarului stau doar pe tabletă, nu în codul public */
+  const v = citesteMandatar() || {};
+  const nume = await intreaba('Mandatar: NUME PRENUME (ex. FILIP IOAN)', v.nume || '', 'text'); if (!nume || !nume.trim()) return false;
+  const loc = await intreaba('Mandatar: localitatea de domiciliu', v.localitate || '', 'text'); if (loc === null) return false;
+  const firma = await intreaba('Mandatar: firma (din cadrul …)', v.firma || '', 'text'); if (firma === null) return false;
+  try { localStorage.setItem('schite_mandatar', JSON.stringify({ nume: nume.trim().toUpperCase(), localitate: loc.trim().toUpperCase(), firma: firma.trim().toUpperCase() })); } catch (e) {}
+  return true;
+}
 async function arataMandat() {
   const m = $('#modal'), mand = citesteMandatar();
-  if (!mand || !mand.nume) {                      /* o singură dată, pe tabletă: datele mandatarului (nu stau în codul public) */
-    const nume = await intreaba('Mandatar: nume (o singură dată)', '', 'text'); if (!nume || !nume.trim()) { arataPoze(); return; }
-    const loc = await intreaba('Mandatar: localitatea de domiciliu', '', 'text'); if (loc === null) { arataPoze(); return; }
-    const firma = await intreaba('Mandatar: firma (din cadrul …)', '', 'text'); if (firma === null) { arataPoze(); return; }
-    try { localStorage.setItem('schite_mandatar', JSON.stringify({ nume: nume.trim().toUpperCase(), localitate: loc.trim().toUpperCase(), firma: firma.trim().toUpperCase() })); } catch (e) {}
-    return arataMandat();
-  }
+  if (!mand || !mand.nume) { if (!(await cereMandatar())) { arataPoze(); return; } return arataMandat(); }
   const vechi = await datePozaText(schita.id + ':mandat');
   let sex = vechi && vechi.solicitant ? vechi.solicitant.sex : '', desenat = false;
   m.innerHTML = '<div class="cutie"><h3>Mandat</h3>' +
+    '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;font-size:15px"><div style="flex:1"><b>Mandatar:</b> <span id="mMandatar"></span></div><button id="mSchimba" style="height:40px;padding:0 14px;border:0;border-radius:8px;background:#e8eef5;font-size:15px">Schimbă</button></div>' +
     '<label>Numele (NUME PRENUME)</label><input id="mNume" autocomplete="off">' +
     '<label style="display:block;margin-top:10px">Localitatea de domiciliu</label><input id="mLoc" autocomplete="off">' +
     '<div class="butoane" style="justify-content:flex-start"><button id="mM">Domnul (M)</button><button id="mF">Doamna (F)</button></div>' +
@@ -769,6 +772,8 @@ async function arataMandat() {
     '<div style="font-weight:600">MANDANT — semnătura</div>' +
     '<canvas id="mSemn" style="width:100%;height:170px;border:1px solid #999;border-bottom:3px solid #333;border-radius:6px;background:#fff;touch-action:none;display:block"></canvas>' +
     '<div class="butoane"><button id="mSterge">Șterge semnătura</button><button class="nu">Anulează</button><button class="ok">Salvează</button></div></div>';
+  $('#mMandatar').textContent = mand.nume + ', ' + mand.localitate + ', ' + mand.firma;
+  $('#mSchimba').onclick = async () => { if (await cereMandatar()) arataMandat(); else arataMandat(); };
   const nm = $('#mNume'), lc = $('#mLoc');
   if (vechi && vechi.solicitant) { nm.value = vechi.solicitant.nume || ''; lc.value = vechi.solicitant.localitate || ''; }
   else if (schita.nume && schita.nume !== 'Schiță fără nume') nm.value = schita.nume;   /* numele schiței se preia în mandat */
