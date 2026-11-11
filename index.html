@@ -665,7 +665,7 @@ $('#btnExport').addEventListener('click', async () => {
     const json = new Blob([JSON.stringify(dateExport(), null, 1)], { type: 'text/plain' });
     fis.push(new File([png], baza + '.png', { type: 'image/png' }), new File([json], baza + '.json', { type: 'text/plain' }));
   }
-  for (const q of poze) fis.push(new File([q.blob], q.nume + '.jpg', { type: 'image/jpeg' }));
+  for (const q of poze) fis.push(new File([q.blob], q.nume + (q.ext || '.jpg'), { type: q.blob.type || 'image/jpeg' }));
   if (navigator.canShare && navigator.canShare({ files: fis })) {
     try { await navigator.share({ files: fis, title: baza }); return; }
     catch (e) { if (e.name === 'AbortError') return; }
@@ -722,15 +722,17 @@ async function arataPoze() {
   m.querySelector('h3').textContent = 'Poze pentru „' + schita.nume + '” (' + poze.length + ')';
   const fa = document.createElement('button'); fa.textContent = '📷 Fă o poză'; fa.style.height = '64px'; fa.style.fontSize = '20px';
   fa.onclick = faPoza; m.querySelector('.tipuri').append(fa);
+  const mb = document.createElement('button'); mb.textContent = '✍ Mandat (semnează clientul)'; mb.style.height = '64px'; mb.style.fontSize = '20px';
+  mb.onclick = () => arataMandat(); m.querySelector('.tipuri').append(mb);
   const l = m.querySelector('.pozele');
   const urls = [];
   for (const q of poze) {
     const r = document.createElement('div'); r.className = 'rand';
-    const im = document.createElement('img'); const u = URL.createObjectURL(q.blob); urls.push(u); im.src = u;
+    const im = document.createElement('img'); const u = URL.createObjectURL(q.blob); urls.push(u); if (!q.ext || q.ext === '.png' || q.ext === '.jpg') im.src = u;
     im.style.cssText = 'height:56px;width:76px;object-fit:cover;border-radius:6px;background:#eee';
     const b = document.createElement('button'); b.className = 'nume'; b.innerHTML = '<span></span><small></small>';
-    b.querySelector('span').textContent = q.nume + '.jpg'; b.querySelector('small').textContent = dataScurta(q.creat) + ' · ' + Math.round(q.blob.size / 1024) + ' KB';
-    b.onclick = () => { window.open(u, '_blank'); };
+    b.querySelector('span').textContent = q.nume + (q.ext || '.jpg'); b.querySelector('small').textContent = dataScurta(q.creat) + ' · ' + Math.round(q.blob.size / 1024) + ' KB';
+    b.onclick = () => { if (!q.ext || q.ext === '.png') window.open(u, '_blank'); };
     const x = document.createElement('button'); x.className = 'sterge'; x.textContent = 'Șterge';
     x.onclick = async () => { urls.forEach(URL.revokeObjectURL); await pozeSterge(q.id); arataPoze(); };
     r.append(im, b, x); l.append(r);
@@ -740,6 +742,74 @@ async function arataPoze() {
 }
 $('#btnPoze').addEventListener('click', arataPoze);
 
+/* ---------- mandat: clientul scrie numele și localitatea (scrisul de mână se transformă în text) și semnează pe pagină ---------- */
+/* Pe tabletă se salvează doar datele și semnătura (mandat_date.json + semnatura.png); mandatul PDF îl face PC-ul (mandat_din_tableta.py). */
+function citesteMandatar() { try { return JSON.parse(localStorage.getItem('schite_mandatar')); } catch (e) { return null; } }
+async function datePozaText(id) {
+  try { const r = (await pozeSchita(schita.id)).find(x => x.id === id); return r ? JSON.parse(await r.blob.text()) : null; } catch (e) { return null; }
+}
+async function arataMandat() {
+  const m = $('#modal'), mand = citesteMandatar();
+  if (!mand || !mand.nume) {                      /* o singură dată, pe tabletă: datele mandatarului (nu stau în codul public) */
+    const nume = await intreaba('Mandatar: nume (o singură dată)', '', 'text'); if (!nume || !nume.trim()) { arataPoze(); return; }
+    const loc = await intreaba('Mandatar: localitatea de domiciliu', '', 'text'); if (loc === null) { arataPoze(); return; }
+    const firma = await intreaba('Mandatar: firma (din cadrul …)', '', 'text'); if (firma === null) { arataPoze(); return; }
+    try { localStorage.setItem('schite_mandatar', JSON.stringify({ nume: nume.trim().toUpperCase(), localitate: loc.trim().toUpperCase(), firma: firma.trim().toUpperCase() })); } catch (e) {}
+    return arataMandat();
+  }
+  const vechi = await datePozaText(schita.id + ':mandat');
+  let sex = vechi && vechi.solicitant ? vechi.solicitant.sex : '', desenat = false;
+  m.innerHTML = '<div class="cutie"><h3>Mandat</h3>' +
+    '<label>Numele (NUME PRENUME)</label><input id="mNume" autocomplete="off">' +
+    '<label style="display:block;margin-top:10px">Localitatea de domiciliu</label><input id="mLoc" autocomplete="off">' +
+    '<div class="butoane" style="justify-content:flex-start"><button id="mM">Domnul (M)</button><button id="mF">Doamna (F)</button></div>' +
+    '<div id="mText" style="margin:12px 0;font-size:15px;line-height:1.45;text-align:justify"></div>' +
+    '<div style="font-weight:600">MANDANT — semnătura</div>' +
+    '<canvas id="mSemn" style="width:100%;height:170px;border:1px solid #999;border-bottom:3px solid #333;border-radius:6px;background:#fff;touch-action:none;display:block"></canvas>' +
+    '<div class="butoane"><button id="mSterge">Șterge semnătura</button><button class="nu">Anulează</button><button class="ok">Salvează</button></div></div>';
+  const nm = $('#mNume'), lc = $('#mLoc');
+  if (vechi && vechi.solicitant) { nm.value = vechi.solicitant.nume || ''; lc.value = vechi.solicitant.localitate || ''; }
+  const esc = t => t.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const text = () => {
+    const nume = esc(nm.value.trim().toUpperCase()) || '……………', loc = esc(lc.value.trim().toUpperCase());
+    const sub = sex === 'F' ? 'Subsemnata' : 'Subsemnatul';
+    $('#mText').innerHTML = '<p style="margin:0 0 8px"><b>MANDAT</b></p><p style="margin:0 0 8px">' + sub + ' <b>' + nume + '</b>' + (loc ? ' cu domiciliul în <b>' + loc + '</b>' : '') +
+      ', în calitate de solicitant denumit în continuare mandant, împuternicesc prin prezenta pe d-nul <b>' + esc(mand.nume) + '</b> domiciliat în <b>' + esc(mand.localitate) + '</b>, din cadrul ' + esc(mand.firma) +
+      ', denumit în continuare mandatar, pentru ca în numele meu și pentru mine să mă reprezinte cu puteri depline în fața SC Delgaz Grid SA (denumit în continuare OSD) în vederea racordării imobilului la sistemul de distribuție a gazelor naturale.</p>' +
+      '<p style="margin:0 0 8px">În baza prezentului mandat, mandatarul meu se va prezenta la sediul OSD în vederea îndeplinirii tuturor formalităților necesare RACORDĂRII, va putea face cereri privind procesul de racordare, semnând în numele meu și pentru mine oriunde va fi necesar, în limitele prezentului mandat, semnătura sa fiindu-mi opozabilă.</p>' +
+      '<p style="margin:0 0 8px;color:#555"><i>Drepturile și obligațiile părților, durata mandatului și celelalte clauze standard sunt în documentul final.</i></p>';
+  };
+  const marcheaza = () => {
+    for (const [id, v] of [['mM', 'M'], ['mF', 'F']]) { $('#' + id).style.background = sex === v ? '#2f6fb0' : ''; $('#' + id).style.color = sex === v ? '#fff' : ''; }
+    text();
+  };
+  $('#mM').onclick = () => { sex = 'M'; marcheaza(); };
+  $('#mF').onclick = () => { sex = 'F'; marcheaza(); };
+  nm.oninput = lc.oninput = text; marcheaza();
+  m.hidden = false;
+  /* câmpul de semnătură */
+  const cs = $('#mSemn'), dpr0 = window.devicePixelRatio || 1;
+  cs.width = Math.round(cs.clientWidth * dpr0); cs.height = Math.round(cs.clientHeight * dpr0);
+  const g = cs.getContext('2d'); g.scale(dpr0, dpr0); g.lineWidth = 2.6; g.lineCap = g.lineJoin = 'round'; g.strokeStyle = '#111';
+  let ult = null;
+  const loc2 = e => { const r = cs.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  cs.onpointerdown = e => { e.preventDefault(); cs.setPointerCapture(e.pointerId); ult = loc2(e); g.beginPath(); g.moveTo(ult.x, ult.y); g.lineTo(ult.x + .1, ult.y + .1); g.stroke(); desenat = true; };
+  cs.onpointermove = e => { if (!ult) return; const q = loc2(e); g.beginPath(); g.moveTo(ult.x, ult.y); g.lineTo(q.x, q.y); g.stroke(); ult = q; };
+  cs.onpointerup = cs.onpointercancel = () => { ult = null; };
+  $('#mSterge').onclick = () => { g.clearRect(0, 0, cs.clientWidth, cs.clientHeight); desenat = false; };
+  m.querySelector('.nu').onclick = () => arataPoze();
+  m.querySelector('.ok').onclick = async () => {
+    if (!nm.value.trim()) { toast('Scrie numele'); return; }
+    if (sex !== 'M' && sex !== 'F') { toast('Alege Domnul sau Doamna'); return; }
+    if (!desenat) { toast('Lipsește semnătura'); return; }
+    const d = new Date(), z = n => String(n).padStart(2, '0');
+    const date = { solicitant: { nume: nm.value.trim().toUpperCase(), sex, localitate: lc.value.trim().toUpperCase() || null }, data_mandat: z(d.getDate()) + '.' + z(d.getMonth() + 1) + '.' + d.getFullYear() };
+    const png = await new Promise(r => cs.toBlob(r, 'image/png'));
+    await pozeAdauga({ id: schita.id + ':mandat', schita: schita.id, nume: 'mandat_date', ext: '.json', creat: acum(), blob: new Blob([JSON.stringify(date, null, 1)], { type: 'application/json' }) });
+    await pozeAdauga({ id: schita.id + ':semnatura', schita: schita.id, nume: 'semnatura', ext: '.png', creat: acum(), blob: png });
+    toast('Mandat salvat'); arataPoze();
+  };
+}
 /* ---------- pornirea ---------- */
 window.addEventListener('resize', redimensioneaza);
 (function porneste() {
