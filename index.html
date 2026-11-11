@@ -449,7 +449,27 @@ $('#aSterge').addEventListener('click', () => {
 function radiaza(p) {
   const s = gasesteLa(p); if (!s) return;
   if (!act.undoPus) { istoric.push(JSON.stringify(schita)); if (istoric.length > 300) istoric.shift(); viitor = []; act.undoPus = true; }
-  elimina(s); salveaza(); deseneaza();
+  if (s.tip === 'perete') taiePerete(s.id, p); else elimina(s);   /* peretele: doar segmentul atins; ușa, geamul, cota: întregi */
+  salveaza(); deseneaza();
+}
+/* șterge din perete numai porțiunea din jurul atingerii; restul rămâne în 1–2 bucăți, cu ușile și geamurile lor */
+function taiePerete(id, p) {
+  const w = perete(id); if (!w) return;
+  const L = dist(A(w), B(w)); if (L <= 0) return;
+  const t = proiectie(p, A(w), B(w)).t, d = (14 / view.s) / L;
+  const t0 = Math.max(0, t - d), t1 = Math.min(1, t + d), minL = 6 / view.s;
+  const are1 = t0 * L >= minL, are2 = (1 - t1) * L >= minL;
+  const o1 = schita.deschideri.filter(o => o.perete === id);
+  schita.deschideri = schita.deschideri.filter(o => o.perete !== id);
+  const pa = punctPe(w, t0), pb = punctPe(w, t1), a0 = A(w), b0 = B(w);
+  schita.pereti = schita.pereti.filter(q => q.id !== id);
+  let id1 = null, id2 = null;
+  if (are1) { id1 = id; schita.pereti.push({ id: id1, x1: a0.x, y1: a0.y, x2: pa.x, y2: pa.y }); }
+  if (are2) { id2 = uid(); schita.pereti.push({ id: id2, x1: pb.x, y1: pb.y, x2: b0.x, y2: b0.y }); }
+  for (const o of o1) {
+    if (are1 && o.b <= t0) schita.deschideri.push({ ...o, perete: id1, a: o.a / t0, b: o.b / t0 });
+    else if (are2 && o.a >= t1) schita.deschideri.push({ ...o, perete: id2, a: (o.a - t1) / (1 - t1), b: (o.b - t1) / (1 - t1) });
+  }
 }
 $('#aIntoarce').addEventListener('click', () => { const e = element(sel); if (e) modifica(() => { element(sel).deschidere = ((e.deschidere || 0) + 1) % 4; }); });
 $('#aDim').addEventListener('click', async () => {
