@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Schițe teren</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#1f4e79">
+<style>
+  :root { --bara:#1f4e79; --activ:#f0a020; }
+  [hidden] { display:none !important; }
+  * { box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; overflow:hidden; background:#fff; font-family:system-ui,Roboto,sans-serif; }
+  #bara { position:fixed; top:0; left:0; right:0; height:60px; background:var(--bara); display:flex; align-items:center; gap:6px; padding:0 8px; overflow-x:auto; }
+  #bara button { flex:none; height:46px; min-width:46px; padding:0 14px; border:0; border-radius:8px; background:#2f6aa3; color:#fff; font-size:17px; }
+  #bara button.activ { background:var(--activ); color:#000; font-weight:600; }
+  #bara button.mic { padding:0 10px; font-size:20px; }
+  #bara .sep { flex:none; width:1px; height:36px; background:#ffffff55; margin:0 4px; }
+  #titlu { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:transparent !important; text-decoration:underline dotted; }
+  #c { position:fixed; top:60px; left:0; width:100vw; height:calc(100vh - 60px); touch-action:none; display:block; }
+  #actiuni { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); display:flex; gap:8px; background:#fff; padding:8px; border-radius:12px; box-shadow:0 2px 12px #0004; }
+  #actiuni button { height:48px; padding:0 18px; font-size:17px; border:0; border-radius:8px; background:#e8eef5; }
+  #actiuni button.rosu { background:#c62828; color:#fff; }
+  #modal { position:fixed; inset:0; background:#0006; display:flex; align-items:center; justify-content:center; z-index:10; }
+  #modal .cutie { background:#fff; border-radius:12px; padding:20px; width:min(520px,92vw); max-height:86vh; overflow:auto; }
+  #modal h3 { margin:0 0 12px; font-size:19px; }
+  #modal input { width:100%; font-size:22px; padding:10px; border:1px solid #999; border-radius:8px; -webkit-user-select:text; user-select:text; }
+  #modal .butoane { display:flex; justify-content:flex-end; gap:10px; margin-top:16px; flex-wrap:wrap; }
+  #modal .butoane button, #modal .lista button { height:48px; padding:0 18px; font-size:17px; border:0; border-radius:8px; background:#e8eef5; }
+  #modal .butoane button.ok { background:var(--bara); color:#fff; }
+  #modal .lista { display:flex; flex-direction:column; gap:8px; }
+  #modal .rand { display:flex; gap:8px; align-items:center; }
+  #modal .rand .nume { flex:1; text-align:left; background:#f4f7fa !important; }
+  #modal .rand .nume small { color:#666; display:block; font-size:13px; }
+  #modal .rand .sterge { background:#fbe9e7 !important; color:#c62828; }
+  #toast { position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:#222; color:#fff; padding:10px 18px; border-radius:20px; font-size:16px; z-index:20; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="bara">
+  <button id="btnSchite" class="mic" title="Schițele">☰</button>
+  <button id="titlu" title="Redenumește">Schiță</button>
+  <span class="sep"></span>
+  <button data-unealta="perete" class="activ">Perete</button>
+  <button data-unealta="usa">Ușă</button>
+  <button data-unealta="geam">Geam</button>
+  <button data-unealta="cota">Cotă</button>
+  <button data-unealta="selectie">Selectează</button>
+  <span class="sep"></span>
+  <button id="btnOrto">90° DA</button>
+  <button id="btnUndo" class="mic" title="Anulează">↶</button>
+  <button id="btnRedo" class="mic" title="Refă">↷</button>
+  <button id="btnFit" class="mic" title="Toată schița pe ecran">⤢</button>
+  <span class="sep"></span>
+  <button id="btnExport">Trimite</button>
+</div>
+<canvas id="c"></canvas>
+<div id="actiuni" hidden>
+  <button id="aDim">Dimensiune</button>
+  <button id="aIntoarce">Întoarce ușa</button>
+  <button id="aSterge" class="rosu">Șterge</button>
+</div>
+<div id="modal" hidden></div>
+<div id="toast" hidden></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const cv = $('#c'), ctx = cv.getContext('2d');
+const CHEIE = 'schite_v1';
+let dpr = 1;
+let schita = null;
+let view = { s: 1, ox: 40, oy: 40 };
+let unealta = 'perete', orto = true, sel = null;
+let istoric = [], viitor = [];
+let penVazut = false;
+let act = null;            // acțiunea de desen în curs
+const degete = new Map();  // atingerile de navigare (pan / zoom)
+let nav = null;
+
+/* ---------- memorare pe tabletă ---------- */
+function uid() { return Math.random().toString(36).slice(2, 9); }
+function acum() { return new Date().toISOString(); }
+function citesteToate() { try { return JSON.parse(localStorage.getItem(CHEIE)) || {}; } catch (e) { return {}; } }
+function scrieToate(t) { try { localStorage.setItem(CHEIE, JSON.stringify(t)); return true; } catch (e) { toast('Nu pot salva pe tabletă!'); return false; } }
+function salveaza() {
+  schita.modificat = acum();
+  const t = citesteToate(); t[schita.id] = schita; scrieToate(t);
+  try { localStorage.setItem(CHEIE + '_ultima', schita.id); } catch (e) {}
+}
+function nouaSchita(nume) { return { id: uid(), nume: nume || 'Schiță fără nume', creat: acum(), modificat: acum(), pereti: [], deschideri: [], cote: [] }; }
+function deschide(s) {
+  schita = s; istoric = []; viitor = []; sel = null; act = null;
+  $('#titlu').textContent = schita.nume;
+  salveaza(); actualizeazaActiuni(); potriveste();
+}
+function modifica(fn) {
+  istoric.push(JSON.stringify(schita)); if (istoric.length > 300) istoric.shift();
+  viitor = []; fn(); salveaza(); actualizeazaActiuni(); deseneaza();
+}
+function undo() { if (!istoric.length) return; viitor.push(JSON.stringify(schita)); schita = JSON.parse(istoric.pop()); sel = null; salveaza(); actualizeazaActiuni(); deseneaza(); }
+function redo() { if (!viitor.length) return; istoric.push(JSON.stringify(schita)); schita = JSON.parse(viitor.pop()); sel = null; salveaza(); actualizeazaActiuni(); deseneaza(); }
+
+/* ---------- geometrie ---------- */
+const lume = (sx, sy) => ({ x: (sx - view.ox) / view.s, y: (sy - view.oy) / view.s });
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function proiectie(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy;
+  let t = L2 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  const q = { x: a.x + t * dx, y: a.y + t * dy };
+  return { t, q, d: dist(p, q) };
+}
+const A = w => ({ x: w.x1, y: w.y1 }), B = w => ({ x: w.x2, y: w.y2 });
+const perete = id => schita.pereti.find(w => w.id === id);
+const punctPe = (w, t) => ({ x: w.x1 + (w.x2 - w.x1) * t, y: w.y1 + (w.y2 - w.y1) * t });
+function capete() {
+  const r = [];
+  for (const w of schita.pereti) r.push(A(w), B(w));
+  for (const c of schita.cote) r.push(A(c), B(c));
+  return r;
+}
+function lipesteCapat(p, tol) {
+  let best = null, bd = tol;
+  for (const q of capete()) { const d = dist(p, q); if (d < bd) { bd = d; best = q; } }
+  return best ? { x: best.x, y: best.y } : null;
+}
+function lipestePerete(p, tol) {
+  let best = null, bd = tol;
+  for (const w of schita.pereti) { const r = proiectie(p, A(w), B(w)); if (r.d < bd) { bd = r.d; best = r.q; } }
+  return best;
+}
+function punctStart(p) {
+  const tol = 18 / view.s;
+  return lipesteCapat(p, tol) || lipestePerete(p, tol) || { x: p.x, y: p.y };
+}
+function punctFinal(start, p) {
+  const tol = 18 / view.s;
+  const c = lipesteCapat(p, tol); if (c) return c;
+  const q = { x: p.x, y: p.y };
+  if (orto) {
+    const ang = Math.abs(Math.atan2(q.y - start.y, q.x - start.x)) * 180 / Math.PI;
+    let oriz = false, vert = false;
+    if (ang < 12 || ang > 168) { q.y = start.y; oriz = true; }
+    else if (Math.abs(ang - 90) < 12) { q.x = start.x; vert = true; }
+    if (oriz || vert) {
+      for (const e of capete()) {
+        if (oriz && Math.abs(e.x - q.x) < tol) { q.x = e.x; return q; }
+        if (vert && Math.abs(e.y - q.y) < tol) { q.y = e.y; return q; }
+      }
+      return q;
+    }
+  }
+  return lipestePerete(q, tol) || q;
+}
+function gasesteLa(p) {
+  const tol = 16 / view.s;
+  for (const c of schita.cote) if (proiectie(p, A(c), B(c)).d < tol) return { tip: 'cota', id: c.id };
+  for (const o of schita.deschideri) {
+    const w = perete(o.perete); if (!w) continue;
+    if (proiectie(p, punctPe(w, o.a), punctPe(w, o.b)).d < tol) return { tip: 'deschidere', id: o.id };
+  }
+  for (const w of schita.pereti) if (proiectie(p, A(w), B(w)).d < tol) return { tip: 'perete', id: w.id };
+  return null;
+}
+function element(s) {
+  if (!s) return null;
+  const lista = s.tip === 'cota' ? schita.cote : s.tip === 'deschidere' ? schita.deschideri : schita.pereti;
+  return lista.find(e => e.id === s.id) || null;
+}
+
+/* ---------- desen ---------- */
+function redimensioneaza() {
+  dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(cv.clientWidth * dpr);
+  cv.height = Math.round(cv.clientHeight * dpr);
+  deseneaza();
+}
+function grila() {
+  const pas = 20;
+  if (pas * view.s < 7) return;
+  const a = lume(0, 0), b = lume(cv.clientWidth, cv.clientHeight);
+  ctx.beginPath();
+  for (let x = Math.floor(a.x / pas) * pas; x <= b.x; x += pas) { ctx.moveTo(x, a.y); ctx.lineTo(x, b.y); }
+  for (let y = Math.floor(a.y / pas) * pas; y <= b.y; y += pas) { ctx.moveTo(a.x, y); ctx.lineTo(b.x, y); }
+  ctx.strokeStyle = '#e9eef3'; ctx.lineWidth = 1 / view.s; ctx.stroke();
+}
+function linie(g, a, b) { g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
+function textPeLinie(g, a, b, txt, px, culoare, dedesubt) {
+  if (!txt) return;
+  let ang = Math.atan2(b.y - a.y, b.x - a.x);
+  if (ang > Math.PI / 2 || ang <= -Math.PI / 2) ang += Math.PI;
+  g.save();
+  g.translate((a.x + b.x) / 2, (a.y + b.y) / 2); g.rotate(ang);
+  g.font = (15 * px) + 'px system-ui,sans-serif'; g.textAlign = 'center';
+  const y = dedesubt ? 18 * px : -6 * px;
+  const w = g.measureText(txt).width;
+  g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(-w / 2 - 3 * px, y - 14 * px, w + 6 * px, 18 * px);
+  g.fillStyle = culoare; g.fillText(txt, 0, y);
+  g.restore();
+}
+function deseneazaSchita(g, s, opt) {
+  const px = 1 / s;
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  // selecția, dedesubt
+  if (opt.sel) {
+    const e = element(opt.sel);
+    g.strokeStyle = '#f0a02099'; g.lineWidth = 16 * px;
+    if (e && opt.sel.tip === 'deschidere') { const w = perete(e.perete); if (w) linie(g, punctPe(w, e.a), punctPe(w, e.b)); }
+    else if (e) linie(g, A(e), B(e));
+  }
+  // pereții
+  g.strokeStyle = '#111'; g.lineWidth = 5 * px;
+  for (const w of schita.pereti) linie(g, A(w), B(w));
+  // ușile și geamurile
+  for (const o of schita.deschideri) {
+    const w = perete(o.perete); if (!w) continue;
+    const a = punctPe(w, o.a), b = punctPe(w, o.b), L = dist(a, b); if (L <= 0) continue;
+    const u = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }, n = { x: -u.y, y: u.x };
+    g.lineCap = 'butt';
+    g.strokeStyle = '#fff'; g.lineWidth = 9 * px; linie(g, a, b);
+    const cul = o.tip === 'geam' ? '#1565c0' : '#b23c17';
+    g.strokeStyle = cul; g.lineWidth = 2 * px;
+    for (const p of [a, b]) linie(g, { x: p.x - n.x * 5 * px, y: p.y - n.y * 5 * px }, { x: p.x + n.x * 5 * px, y: p.y + n.y * 5 * px });
+    let laturaText = false;
+    if (o.tip === 'geam') {
+      for (const k of [-3, 0, 3]) linie(g, { x: a.x + n.x * k * px, y: a.y + n.y * k * px }, { x: b.x + n.x * k * px, y: b.y + n.y * k * px });
+    } else {
+      const f = o.deschidere || 0;
+      const bal = (f & 1) ? b : a, alt = (f & 1) ? a : b, sens = (f & 2) ? -1 : 1;
+      const cap = { x: bal.x + n.x * sens * L, y: bal.y + n.y * sens * L };
+      linie(g, bal, cap);
+      const a1 = Math.atan2(cap.y - bal.y, cap.x - bal.x), a2 = Math.atan2(alt.y - bal.y, alt.x - bal.x);
+      let d = a2 - a1; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
+      g.lineWidth = 1.2 * px; g.setLineDash([6 * px, 4 * px]);
+      g.beginPath(); g.arc(bal.x, bal.y, L, a1, a2, d < 0); g.stroke(); g.setLineDash([]);
+      laturaText = sens > 0;   // textul pe partea opusă deschiderii ușii (aproximativ)
+    }
+    g.lineCap = 'round';
+    const et = (o.tip === 'geam' ? 'G ' : 'U ') + (o.dim || '?');
+    textPeLinie(g, a, b, et, px, cul, o.tip === 'usa' ? !laturaText : false);
+  }
+  // cotele
+  for (const c of schita.cote) {
+    const a = A(c), b = B(c), L = dist(a, b); if (L <= 0) continue;
+    const u = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }, n = { x: -u.y, y: u.x };
+    g.strokeStyle = '#2e7d32'; g.lineWidth = 1.5 * px;
+    linie(g, a, b);
+    for (const p of [a, b]) {
+      linie(g, { x: p.x - n.x * 8 * px, y: p.y - n.y * 8 * px }, { x: p.x + n.x * 8 * px, y: p.y + n.y * 8 * px });
+      linie(g, { x: p.x - (u.x + n.x) * 4 * px, y: p.y - (u.y + n.y) * 4 * px }, { x: p.x + (u.x + n.x) * 4 * px, y: p.y + (u.y + n.y) * 4 * px });
+    }
+    textPeLinie(g, a, b, c.val, px, '#2e7d32', false);
+  }
+  // desenul în curs
+  if (opt.act) {
+    const k = opt.act;
+    g.setLineDash([8 * px, 6 * px]);
+    if (k.unealta === 'perete' && k.cur) { g.strokeStyle = '#111'; g.lineWidth = 5 * px; linie(g, k.start, k.cur); }
+    if (k.unealta === 'cota' && k.cur) { g.strokeStyle = '#2e7d32'; g.lineWidth = 2 * px; linie(g, k.start, k.cur); }
+    if ((k.unealta === 'usa' || k.unealta === 'geam') && k.perete) {
+      const w = perete(k.perete);
+      if (w) { g.strokeStyle = k.unealta === 'geam' ? '#1565c0' : '#b23c17'; g.lineWidth = 10 * px; linie(g, punctPe(w, Math.min(k.t0, k.t1)), punctPe(w, Math.max(k.t0, k.t1))); }
+    }
+    g.setLineDash([]);
+    if (k.cur && (k.unealta === 'perete' || k.unealta === 'cota')) {
+      g.fillStyle = '#f0a020'; g.beginPath(); g.arc(k.cur.x, k.cur.y, 6 * px, 0, 7); g.fill();
+    }
+  }
+}
+function deseneaza() {
+  if (!schita) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.setTransform(dpr * view.s, 0, 0, dpr * view.s, dpr * view.ox, dpr * view.oy);
+  grila();
+  deseneazaSchita(ctx, view.s, { sel, act });
+}
+function limite() {
+  const p = capete();
+  for (const o of schita.deschideri) {
+    const w = perete(o.perete); if (!w) continue;
+    const a = punctPe(w, o.a), b = punctPe(w, o.b), L = dist(a, b);
+    p.push({ x: a.x - L, y: a.y - L }, { x: a.x + L, y: a.y + L });
+  }
+  if (!p.length) return null;
+  return { x0: Math.min(...p.map(q => q.x)), y0: Math.min(...p.map(q => q.y)), x1: Math.max(...p.map(q => q.x)), y1: Math.max(...p.map(q => q.y)) };
+}
+function potriveste() {
+  const b = limite();
+  if (!b) { view = { s: 1, ox: 40, oy: 40 }; deseneaza(); return; }
+  const W = cv.clientWidth, H = cv.clientHeight, m = 60;
+  const s = Math.min((W - 2 * m) / Math.max(b.x1 - b.x0, 1), (H - 2 * m) / Math.max(b.y1 - b.y0, 1), 4);
+  view = { s, ox: (W - (b.x1 - b.x0) * s) / 2 - b.x0 * s, oy: (H - (b.y1 - b.y0) * s) / 2 - b.y0 * s };
+  deseneaza();
+}
+
+/* ---------- atingeri: creion = desen, degete = mutare / zoom ---------- */
+function pozitie(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function startNav() {
+  const v = [...degete.values()];
+  if (v.length === 1) nav = { c: v[0], d: 0 };
+  else if (v.length >= 2) nav = { c: { x: (v[0].x + v[1].x) / 2, y: (v[0].y + v[1].y) / 2 }, d: dist(v[0], v[1]) };
+  else nav = null;
+}
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (e.pointerType === 'pen') penVazut = true;
+  cv.setPointerCapture(e.pointerId);
+  const p = pozitie(e);
+  const deget = e.pointerType === 'touch';
+  if (deget && (penVazut || degete.size >= 1 || (act && act.pid !== e.pointerId))) {
+    if (act && act.deget) { act = null; }   // al doilea deget anulează desenul început cu degetul
+    degete.set(e.pointerId, p); startNav(); deseneaza(); return;
+  }
+  if (deget) degete.set(e.pointerId, p);
+  if (e.button === 1 || e.button === 2) { degete.set(e.pointerId, p); startNav(); return; }
+  incepeActiune(e.pointerId, lume(p.x, p.y), deget);
+});
+cv.addEventListener('pointermove', e => {
+  const p = pozitie(e);
+  if (degete.has(e.pointerId) && (!act || act.pid !== e.pointerId)) {
+    degete.set(e.pointerId, p);
+    const v = [...degete.values()];
+    if (nav && v.length === 1) { view.ox += p.x - nav.c.x; view.oy += p.y - nav.c.y; nav.c = p; }
+    else if (nav && v.length >= 2) {
+      const c = { x: (v[0].x + v[1].x) / 2, y: (v[0].y + v[1].y) / 2 }, d = dist(v[0], v[1]);
+      const f = nav.d > 0 ? d / nav.d : 1, s2 = Math.max(0.05, Math.min(30, view.s * f)), ff = s2 / view.s;
+      view.ox = c.x - (nav.c.x - view.ox) * ff; view.oy = c.y - (nav.c.y - view.oy) * ff; view.s = s2;
+      nav = { c, d };
+    }
+    deseneaza(); return;
+  }
+  if (act && act.pid === e.pointerId) { if (act.deget) degete.set(e.pointerId, p); continuaActiune(lume(p.x, p.y)); }
+});
+function ridica(e) {
+  const eraNav = degete.has(e.pointerId) && (!act || act.pid !== e.pointerId);
+  degete.delete(e.pointerId);
+  if (eraNav) { startNav(); return; }
+  if (act && act.pid === e.pointerId) {
+    if (e.type === 'pointercancel') { act = null; deseneaza(); }
+    else termina();
+  }
+}
+cv.addEventListener('pointerup', ridica);
+cv.addEventListener('pointercancel', ridica);
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const p = pozitie(e), f = Math.exp(-e.deltaY * 0.0015), s2 = Math.max(0.05, Math.min(30, view.s * f)), ff = s2 / view.s;
+  view.ox = p.x - (p.x - view.ox) * ff; view.oy = p.y - (p.y - view.oy) * ff; view.s = s2; deseneaza();
+}, { passive: false });
+
+/* ---------- uneltele ---------- */
+function incepeActiune(pid, p, deget) {
+  if (unealta === 'selectie') {
+    sel = gasesteLa(p); actualizeazaActiuni(); deseneaza(); return;
+  }
+  if (unealta === 'perete' || unealta === 'cota') {
+    const start = unealta === 'perete' ? punctStart(p) : (lipesteCapat(p, 18 / view.s) || p);
+    act = { pid, deget, unealta, start, cur: null };
+  } else {
+    let best = null, bd = 30 / view.s;
+    for (const w of schita.pereti) { const r = proiectie(p, A(w), B(w)); if (r.d < bd) { bd = r.d; best = { w, t: r.t }; } }
+    if (!best) { toast('Atinge un perete'); return; }
+    act = { pid, deget, unealta, perete: best.w.id, t0: best.t, t1: best.t };
+  }
+  deseneaza();
+}
+function continuaActiune(p) {
+  if (!act) return;
+  if (act.unealta === 'perete' || act.unealta === 'cota') act.cur = punctFinal(act.start, p);
+  else { const w = perete(act.perete); if (w) act.t1 = proiectie(p, A(w), B(w)).t; }
+  deseneaza();
+}
+async function termina() {
+  const k = act; act = null;
+  if (!k) return;
+  if (k.unealta === 'perete') {
+    if (k.cur && dist(k.start, k.cur) > 8 / view.s)
+      modifica(() => schita.pereti.push({ id: uid(), x1: k.start.x, y1: k.start.y, x2: k.cur.x, y2: k.cur.y }));
+    else deseneaza();
+    return;
+  }
+  if (k.unealta === 'cota') {
+    if (!k.cur || dist(k.start, k.cur) <= 8 / view.s) { deseneaza(); return; }
+    deseneaza();
+    const v = await intreaba('Cota (cm)', '', 'decimal');
+    if (v === null || v.trim() === '') { deseneaza(); return; }
+    modifica(() => schita.cote.push({ id: uid(), x1: k.start.x, y1: k.start.y, x2: k.cur.x, y2: k.cur.y, val: v.trim() }));
+    return;
+  }
+  const w = perete(k.perete); if (!w) return;
+  const L = dist(A(w), B(w));
+  let a = Math.min(k.t0, k.t1), b = Math.max(k.t0, k.t1);
+  if ((b - a) * L < 10 / view.s) {          // atingere scurtă: lățime implicită
+    const jum = Math.min(L * 0.25, k.unealta === 'usa' ? 22 : 28) / L;
+    a = Math.max(0, k.t0 - jum); b = Math.min(1, k.t0 + jum);
+  }
+  deseneaza();
+  const dim = await intreaba(k.unealta === 'geam' ? 'Geam: lățime x înălțime (cm), ex. 100x120' : 'Ușă: lățime (cm), ex. 80', '', 'text');
+  if (dim === null) { deseneaza(); return; }
+  modifica(() => schita.deschideri.push({ id: uid(), tip: k.unealta, perete: w.id, a, b, dim: dim.trim(), deschidere: 0 }));
+}
+
+/* ---------- butoanele ---------- */
+document.querySelectorAll('[data-unealta]').forEach(b => b.addEventListener('click', () => {
+  unealta = b.dataset.unealta;
+  document.querySelectorAll('[data-unealta]').forEach(x => x.classList.toggle('activ', x === b));
+  if (unealta !== 'selectie') sel = null;
+  actualizeazaActiuni(); deseneaza();
+}));
+$('#btnOrto').addEventListener('click', () => { orto = !orto; $('#btnOrto').textContent = orto ? '90° DA' : '90° NU'; $('#btnOrto').classList.toggle('activ', !orto); });
+$('#btnUndo').addEventListener('click', undo);
+$('#btnRedo').addEventListener('click', redo);
+$('#btnFit').addEventListener('click', potriveste);
+$('#titlu').addEventListener('click', async () => {
+  const n = await intreaba('Numele schiței (beneficiar / adresă)', schita.nume, 'text');
+  if (n && n.trim()) { schita.nume = n.trim(); $('#titlu').textContent = schita.nume; salveaza(); }
+});
+function actualizeazaActiuni() {
+  const e = element(sel);
+  if (!e) sel = null;
+  $('#actiuni').hidden = !sel;
+  if (!sel) return;
+  $('#aDim').hidden = sel.tip === 'perete';
+  $('#aIntoarce').hidden = !(sel.tip === 'deschidere' && e.tip === 'usa');
+}
+$('#aSterge').addEventListener('click', () => {
+  const s = sel; if (!s) return;
+  modifica(() => {
+    if (s.tip === 'perete') { schita.pereti = schita.pereti.filter(w => w.id !== s.id); schita.deschideri = schita.deschideri.filter(o => o.perete !== s.id); }
+    if (s.tip === 'deschidere') schita.deschideri = schita.deschideri.filter(o => o.id !== s.id);
+    if (s.tip === 'cota') schita.cote = schita.cote.filter(c => c.id !== s.id);
+    sel = null;
+  });
+});
+$('#aIntoarce').addEventListener('click', () => { const e = element(sel); if (e) modifica(() => { element(sel).deschidere = ((e.deschidere || 0) + 1) % 4; }); });
+$('#aDim').addEventListener('click', async () => {
+  const e = element(sel); if (!e) return;
+  const cota = sel.tip === 'cota';
+  const v = await intreaba(cota ? 'Cota (cm)' : (e.tip === 'geam' ? 'Geam: lățime x înălțime (cm)' : 'Ușă: lățime (cm)'), cota ? e.val : e.dim, cota ? 'decimal' : 'text');
+  if (v === null) return;
+  const id = sel.id;
+  modifica(() => { const x = (cota ? schita.cote : schita.deschideri).find(q => q.id === id); if (cota) x.val = v.trim(); else x.dim = v.trim(); });
+});
+
+/* ---------- ferestre de dialog ---------- */
+function intreaba(titlu, valoare, mod) {
+  return new Promise(rez => {
+    const m = $('#modal');
+    m.innerHTML = '<div class="cutie"><h3></h3><input><div class="butoane"><button class="nu">Anulează</button><button class="ok">OK</button></div></div>';
+    m.querySelector('h3').textContent = titlu;
+    const inp = m.querySelector('input'); inp.value = valoare || ''; inp.setAttribute('inputmode', mod || 'text');
+    const gata = v => { m.hidden = true; m.innerHTML = ''; rez(v); };
+    m.querySelector('.ok').onclick = () => gata(inp.value);
+    m.querySelector('.nu').onclick = () => gata(null);
+    inp.onkeydown = e => { if (e.key === 'Enter') gata(inp.value); if (e.key === 'Escape') gata(null); };
+    m.hidden = false; setTimeout(() => inp.focus(), 50);
+  });
+}
+function confirma(titlu) {
+  return new Promise(rez => {
+    const m = $('#modal');
+    m.innerHTML = '<div class="cutie"><h3></h3><div class="butoane"><button class="nu">Nu</button><button class="ok">Da</button></div></div>';
+    m.querySelector('h3').textContent = titlu;
+    const gata = v => { m.hidden = true; m.innerHTML = ''; rez(v); };
+    m.querySelector('.ok').onclick = () => gata(true); m.querySelector('.nu').onclick = () => gata(false);
+    m.hidden = false;
+  });
+}
+let tTimer = null;
+function toast(t) { const e = $('#toast'); e.textContent = t; e.hidden = false; clearTimeout(tTimer); tTimer = setTimeout(() => e.hidden = true, 2200); }
+
+/* ---------- lista schițelor ---------- */
+function dataScurta(iso) { try { const d = new Date(iso); return d.toLocaleDateString('ro-RO') + ' ' + d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+function arataLista() {
+  const m = $('#modal');
+  const toate = Object.values(citesteToate()).sort((a, b) => (b.modificat || '').localeCompare(a.modificat || ''));
+  m.innerHTML = '<div class="cutie"><h3>Schițele de pe tabletă</h3><div class="lista"></div><div class="butoane"><button class="nu">Închide</button><button class="ok">＋ Schiță nouă</button></div></div>';
+  const l = m.querySelector('.lista');
+  for (const s of toate) {
+    const r = document.createElement('div'); r.className = 'rand';
+    const b = document.createElement('button'); b.className = 'nume';
+    b.innerHTML = '<span></span><small></small>';
+    b.querySelector('span').textContent = s.nume + (s.id === schita.id ? '  (deschisă)' : '');
+    b.querySelector('small').textContent = dataScurta(s.modificat) + ' · ' + s.pereti.length + ' pereți, ' + s.cote.length + ' cote';
+    b.onclick = () => { m.hidden = true; deschide(citesteToate()[s.id]); };
+    const x = document.createElement('button'); x.className = 'sterge'; x.textContent = 'Șterge';
+    x.onclick = async () => {
+      m.hidden = true;
+      if (await confirma('Ștergi schița „' + s.nume + '”?')) {
+        const t = citesteToate(); delete t[s.id]; scrieToate(t);
+        if (s.id === schita.id) { const rest = Object.values(t); deschide(rest[0] || nouaSchita()); }
+      }
+      arataLista();
+    };
+    r.append(b, x); l.append(r);
+  }
+  m.querySelector('.nu').onclick = () => { m.hidden = true; };
+  m.querySelector('.ok').onclick = async () => {
+    m.hidden = true;
+    const n = await intreaba('Schiță nouă: beneficiar / adresă', '', 'text');
+    if (n !== null) deschide(nouaSchita(n.trim()));
+  };
+  m.hidden = false;
+}
+$('#btnSchite').addEventListener('click', arataLista);
+
+/* ---------- trimiterea (PNG + JSON) ---------- */
+function numeFisier() {
+  const n = (schita.nume || 'schita').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  return 'schita_' + (n || 'fara_nume') + '_' + new Date().toISOString().slice(0, 10);
+}
+function r1(v) { return Math.round(v * 10) / 10; }
+function dateExport() {
+  return {
+    app: 'schite-teren', versiune: 1, nume: schita.nume, creat: schita.creat, modificat: schita.modificat,
+    nota: 'Coordonatele sunt în unitățile schiței (fără scară), axa y în jos. Dimensiunile reale (cm) sunt în cote[].val și deschideri[].dim. Deschiderile stau pe peretele indicat, între fracțiunile a și b ale lungimii lui (de la x1,y1 spre x2,y2).',
+    pereti: schita.pereti.map(w => ({ id: w.id, x1: r1(w.x1), y1: r1(w.y1), x2: r1(w.x2), y2: r1(w.y2) })),
+    deschideri: schita.deschideri.map(o => ({ id: o.id, tip: o.tip, perete: o.perete, a: Math.round(o.a * 1000) / 1000, b: Math.round(o.b * 1000) / 1000, dim: o.dim, deschidere: o.deschidere || 0 })),
+    cote: schita.cote.map(c => ({ id: c.id, x1: r1(c.x1), y1: r1(c.y1), x2: r1(c.x2), y2: r1(c.y2), val: c.val }))
+  };
+}
+function randeazaPNG() {
+  const b = limite(); if (!b) return null;
+  const m = 60, cap = 50, max = 2400;
+  const bw = Math.max(b.x1 - b.x0, 1), bh = Math.max(b.y1 - b.y0, 1);
+  const s = Math.min((max - 2 * m) / bw, (max - 2 * m) / bh, 6);
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(bw * s + 2 * m); c.height = Math.ceil(bh * s + 2 * m + cap);
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = '#000'; g.font = '22px system-ui,sans-serif';
+  g.fillText(schita.nume + '   ' + dataScurta(schita.modificat), m, 34);
+  g.setTransform(s, 0, 0, s, m - b.x0 * s, m + cap - b.y0 * s);
+  deseneazaSchita(g, s, {});
+  return c;
+}
+function descarca(f) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+$('#btnExport').addEventListener('click', async () => {
+  const c = randeazaPNG(); if (!c) { toast('Schița e goală'); return; }
+  const baza = numeFisier();
+  const png = await new Promise(r => c.toBlob(r, 'image/png'));
+  const json = new Blob([JSON.stringify(dateExport(), null, 1)], { type: 'text/plain' });
+  const fis = [new File([png], baza + '.png', { type: 'image/png' }), new File([json], baza + '.json', { type: 'text/plain' })];
+  if (navigator.canShare && navigator.canShare({ files: fis })) {
+    try { await navigator.share({ files: fis, title: baza }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  fis.forEach(descarca); toast('Salvate în Descărcări');
+});
+
+/* ---------- pornirea ---------- */
+window.addEventListener('resize', redimensioneaza);
+(function porneste() {
+  const t = citesteToate();
+  let ultima = null; try { ultima = localStorage.getItem(CHEIE + '_ultima'); } catch (e) {}
+  redimensioneaza();
+  deschide(t[ultima] || Object.values(t)[0] || nouaSchita());
+})();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
