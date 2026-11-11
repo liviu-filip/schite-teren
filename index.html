@@ -231,18 +231,35 @@ function deseneazaSchita(g, s, opt) {
     if (o.tip === 'geam') {
       for (const k of [-3, 0, 3]) linie(g, { x: a.x + n.x * k * px, y: a.y + n.y * k * px }, { x: b.x + n.x * k * px, y: b.y + n.y * k * px });
     } else {
-      const f = o.deschidere || 0;
-      const bal = (f & 1) ? b : a, alt = (f & 1) ? a : b, sens = (f & 2) ? -1 : 1;
-      const cap = { x: bal.x + n.x * sens * L, y: bal.y + n.y * sens * L };
-      linie(g, bal, cap);
-      const a1 = Math.atan2(cap.y - bal.y, cap.x - bal.x), a2 = Math.atan2(alt.y - bal.y, alt.x - bal.x);
-      let d = a2 - a1; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
-      g.lineWidth = 1.2 * px; g.setLineDash([6 * px, 4 * px]);
-      g.beginPath(); g.arc(bal.x, bal.y, L, a1, a2, d < 0); g.stroke(); g.setLineDash([]);
-      laturaText = sens > 0;   // textul pe partea opusă deschiderii ușii (aproximativ)
+      const f = o.deschidere || 0, v = o.varianta || 'simpla', sg = (f & 2) ? -1 : 1;
+      const canat = (bal, d, Lc) => {            /* canat cu balamaua în bal, închis spre d (vector unitate), lungime Lc */
+        const cap = { x: bal.x + n.x * sg * Lc, y: bal.y + n.y * sg * Lc };
+        g.strokeStyle = cul; g.lineWidth = 2 * px; linie(g, bal, cap);
+        if (v === 'sticla') {
+          g.strokeStyle = '#1565c0'; g.lineWidth = 4 * px;
+          linie(g, { x: bal.x + (cap.x - bal.x) * .2, y: bal.y + (cap.y - bal.y) * .2 }, { x: bal.x + (cap.x - bal.x) * .8, y: bal.y + (cap.y - bal.y) * .8 });
+        }
+        const a1 = Math.atan2(cap.y - bal.y, cap.x - bal.x), a2 = Math.atan2(d.y, d.x);
+        let dd = a2 - a1; while (dd > Math.PI) dd -= 2 * Math.PI; while (dd < -Math.PI) dd += 2 * Math.PI;
+        g.strokeStyle = cul; g.lineWidth = 1.2 * px; g.setLineDash([6 * px, 4 * px]);
+        g.beginPath(); g.arc(bal.x, bal.y, Lc, a1, a2, dd < 0); g.stroke(); g.setLineDash([]);
+      };
+      if (v === 'dubla') { canat(a, u, L / 2); canat(b, { x: -u.x, y: -u.y }, L / 2); }
+      else if (v === 'glisanta') {
+        const dir = (f & 1) ? 1 : -1, off = 7 * px * sg;
+        const P = (q, k, m2) => ({ x: q.x + n.x * off * k + u.x * m2, y: q.y + n.y * off * k + u.y * m2 });
+        g.strokeStyle = cul; g.lineWidth = 2 * px; linie(g, P(a, 1, 0), P(b, 1, 0));
+        g.setLineDash([6 * px, 4 * px]); linie(g, P(a, 2, dir * L * .5), P(b, 2, dir * L * .5)); g.setLineDash([]);
+        const c0 = P(a, 3, L * .5), c1 = P(a, 3, L * .5 + dir * L * .5);
+        linie(g, c0, c1);
+        linie(g, c1, { x: c1.x - dir * u.x * 7 * px + n.x * 4 * px, y: c1.y - dir * u.y * 7 * px + n.y * 4 * px });
+        linie(g, c1, { x: c1.x - dir * u.x * 7 * px - n.x * 4 * px, y: c1.y - dir * u.y * 7 * px - n.y * 4 * px });
+      }
+      else { const bal = (f & 1) ? b : a, d = (f & 1) ? { x: -u.x, y: -u.y } : u; canat(bal, d, L); }
+      laturaText = sg > 0;   // textul pe partea opusă deschiderii ușii (aproximativ)
     }
     g.lineCap = 'round';
-    const et = (o.tip === 'geam' ? 'G' + (o.dim ? ' ' + o.dim : '') : '');
+    const et = (o.tip === 'geam' ? 'G' + (o.dim ? ' ' + o.dim : '') : (o.varianta === 'sticla' && o.dim ? o.dim : ''));
     if (et) textPeLinie(g, a, b, et, px, cul, o.tip === 'usa' ? !laturaText : false);
   }
   // cotele
@@ -362,6 +379,10 @@ function incepeActiune(pid, p, deget) {
     sel = gasesteLa(p); actualizeazaActiuni(); deseneaza(); return;
   }
   if (unealta === 'radiera') { act = { pid, deget, unealta }; radiaza(p); return; }
+  if (unealta === 'usa') {                       /* atingerea unei uși existente: următoarea poziție */
+    const g0 = gasesteLa(p), o0 = g0 && g0.tip === 'deschidere' ? schita.deschideri.find(q => q.id === g0.id) : null;
+    if (o0 && o0.tip === 'usa') { modifica(() => ciclu(schita.deschideri.find(q => q.id === g0.id))); return; }
+  }
   if (unealta === 'perete' || unealta === 'cota') {
     const start = unealta === 'perete' ? punctStart(p) : (lipesteCapat(p, 18 / view.s) || p);
     act = { pid, deget, unealta, start, cur: null };
@@ -406,15 +427,22 @@ async function termina() {
   }
   deseneaza();
   let dim = '';                               /* la ușă lățimea nu contează: fără întrebare */
-  if (k.unealta === 'geam') {
-    dim = await intreaba('Geam: lățime x înălțime (cm), ex. 100x120', '', 'dim');
+  const varianta = k.unealta === 'usa' ? VARIANTE[varUsa] : undefined;
+  if (k.unealta === 'geam' || varianta === 'sticla') {
+    dim = await intreaba(k.unealta === 'geam' ? 'Geam: lățime x înălțime (cm), ex. 100x120' : 'Sticla ușii: lățime x înălțime (cm), ex. 60x150', '', 'dim');
     if (dim === null) { deseneaza(); return; }
   }
-  modifica(() => schita.deschideri.push({ id: uid(), tip: k.unealta, perete: w.id, a, b, dim: dim.trim(), deschidere: 0 }));
+  const poz = k.unealta === 'usa' ? pozitieImplicita(w, a, b) : 0;
+  const o = { id: uid(), tip: k.unealta, perete: w.id, a, b, dim: dim.trim(), deschidere: poz };
+  if (varianta) o.varianta = varianta;
+  modifica(() => schita.deschideri.push(o));
 }
 
 /* ---------- butoanele ---------- */
+const VARIANTE = ['simpla', 'dubla', 'glisanta', 'sticla'], NUME_USA = ['Ușă', 'Ușă dublă', 'Ușă glisantă', 'Ușă cu sticlă'];
+let varUsa = 0;
 document.querySelectorAll('[data-unealta]').forEach(b => b.addEventListener('click', () => {
+  if (b.dataset.unealta === 'usa' && unealta === 'usa') { varUsa = (varUsa + 1) % VARIANTE.length; b.textContent = NUME_USA[varUsa]; }
   unealta = b.dataset.unealta;
   document.querySelectorAll('[data-unealta]').forEach(x => x.classList.toggle('activ', x === b));
   if (unealta !== 'selectie') sel = null;
@@ -435,6 +463,38 @@ function actualizeazaActiuni() {
   if (!sel) return;
   $('#aDim').hidden = sel.tip === 'perete' || (sel.tip === 'deschidere' && e.tip === 'usa');
   $('#aIntoarce').hidden = !(sel.tip === 'deschidere' && e.tip === 'usa');
+}
+/* poziția implicită a ușii: spre interior și cu balamaua spre cel mai apropiat perete */
+function razaPana(m, r, exclus) {
+  let best = null, cnt = 0;
+  for (const q of schita.pereti) {
+    if (q.id === exclus) continue;
+    const e = { x: q.x2 - q.x1, y: q.y2 - q.y1 }, den = r.x * e.y - r.y * e.x; if (Math.abs(den) < 1e-9) continue;
+    const t = ((q.x1 - m.x) * e.y - (q.y1 - m.y) * e.x) / den, sc = ((q.x1 - m.x) * r.y - (q.y1 - m.y) * r.x) / den;
+    if (t > 1e-6 && sc >= 0 && sc <= 1) { cnt++; if (best === null || t < best) best = t; }
+  }
+  return { cnt, d: best };
+}
+function pozitieImplicita(w, a, b) {
+  const L = dist(A(w), B(w)), tol = 12 / view.s;
+  const stops = [0, 1];
+  for (const q of schita.pereti) {
+    if (q.id === w.id) continue;
+    for (const pt of [A(q), B(q)]) { const r = proiectie(pt, A(w), B(w)); if (r.d < tol) stops.push(r.t); }
+  }
+  const da = (a - Math.max(...stops.filter(t => t <= a + 1e-6))) * L, db = (Math.min(...stops.filter(t => t >= b - 1e-6)) - b) * L;
+  const u = { x: (w.x2 - w.x1) / L, y: (w.y2 - w.y1) / L }, n = { x: -u.y, y: u.x };
+  const m = punctPe(w, (a + b) / 2);
+  const ip = razaPana(m, n, w.id), im = razaPana(m, { x: -n.x, y: -n.y }, w.id);
+  let interiorPlus = true;
+  if (ip.cnt > 0 && im.cnt === 0) interiorPlus = true;
+  else if (im.cnt > 0 && ip.cnt === 0) interiorPlus = false;
+  else if (ip.cnt > 0 && im.cnt > 0) interiorPlus = ip.d >= im.d;
+  return (db < da ? 1 : 0) | (interiorPlus ? 0 : 2);
+}
+function ciclu(o) {            /* următoarea poziție a ușii */
+  if ((o.varianta || 'simpla') === 'dubla') o.deschidere = ((o.deschidere || 0) ^ 2);
+  else o.deschidere = ((o.deschidere || 0) + 1) % 4;
 }
 function elimina(s) {
   if (s.tip === 'perete') { schita.pereti = schita.pereti.filter(w => w.id !== s.id); schita.deschideri = schita.deschideri.filter(o => o.perete !== s.id); }
@@ -471,7 +531,7 @@ function taiePerete(id, p) {
     else if (are2 && o.a >= t1) schita.deschideri.push({ ...o, perete: id2, a: (o.a - t1) / (1 - t1), b: (o.b - t1) / (1 - t1) });
   }
 }
-$('#aIntoarce').addEventListener('click', () => { const e = element(sel); if (e) modifica(() => { element(sel).deschidere = ((e.deschidere || 0) + 1) % 4; }); });
+$('#aIntoarce').addEventListener('click', () => { const e = element(sel); if (e) modifica(() => ciclu(element(sel))); });
 $('#aDim').addEventListener('click', async () => {
   const e = element(sel); if (!e) return;
   const cota = sel.tip === 'cota';
@@ -571,7 +631,7 @@ function dateExport() {
     app: 'schite-teren', versiune: 1, nume: schita.nume, creat: schita.creat, modificat: schita.modificat,
     nota: 'Coordonatele sunt în unitățile schiței (fără scară), axa y în jos. Dimensiunile reale (cm) sunt în cote[].val și deschideri[].dim. Deschiderile stau pe peretele indicat, între fracțiunile a și b ale lungimii lui (de la x1,y1 spre x2,y2).',
     pereti: schita.pereti.map(w => ({ id: w.id, x1: r1(w.x1), y1: r1(w.y1), x2: r1(w.x2), y2: r1(w.y2) })),
-    deschideri: schita.deschideri.map(o => ({ id: o.id, tip: o.tip, perete: o.perete, a: Math.round(o.a * 1000) / 1000, b: Math.round(o.b * 1000) / 1000, dim: o.dim, deschidere: o.deschidere || 0 })),
+    deschideri: schita.deschideri.map(o => ({ id: o.id, tip: o.tip, perete: o.perete, a: Math.round(o.a * 1000) / 1000, b: Math.round(o.b * 1000) / 1000, dim: o.dim, varianta: o.tip === 'usa' ? (o.varianta || 'simpla') : undefined, deschidere: o.deschidere || 0 })),
     cote: schita.cote.map(c => ({ id: c.id, x1: r1(c.x1), y1: r1(c.y1), x2: r1(c.x2), y2: r1(c.y2), val: c.val }))
   };
 }
