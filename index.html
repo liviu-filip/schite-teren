@@ -49,6 +49,7 @@
   <button data-unealta="usa">Ușă</button>
   <button data-unealta="geam">Geam</button>
   <button data-unealta="cota">Cotă</button>
+  <button data-unealta="radiera">Radieră</button>
   <button data-unealta="selectie">Selectează</button>
   <span class="sep"></span>
   <button id="btnOrto">90° DA</button>
@@ -360,6 +361,7 @@ function incepeActiune(pid, p, deget) {
   if (unealta === 'selectie') {
     sel = gasesteLa(p); actualizeazaActiuni(); deseneaza(); return;
   }
+  if (unealta === 'radiera') { act = { pid, deget, unealta }; radiaza(p); return; }
   if (unealta === 'perete' || unealta === 'cota') {
     const start = unealta === 'perete' ? punctStart(p) : (lipesteCapat(p, 18 / view.s) || p);
     act = { pid, deget, unealta, start, cur: null };
@@ -373,13 +375,14 @@ function incepeActiune(pid, p, deget) {
 }
 function continuaActiune(p) {
   if (!act) return;
+  if (act.unealta === 'radiera') { radiaza(p); return; }
   if (act.unealta === 'perete' || act.unealta === 'cota') act.cur = punctFinal(act.start, p);
   else { const w = perete(act.perete); if (w) act.t1 = proiectie(p, A(w), B(w)).t; }
   deseneaza();
 }
 async function termina() {
   const k = act; act = null;
-  if (!k) return;
+  if (!k || k.unealta === 'radiera') return;
   if (k.unealta === 'perete') {
     if (k.cur && dist(k.start, k.cur) > 8 / view.s)
       modifica(() => schita.pereti.push({ id: uid(), x1: k.start.x, y1: k.start.y, x2: k.cur.x, y2: k.cur.y }));
@@ -433,15 +436,21 @@ function actualizeazaActiuni() {
   $('#aDim').hidden = sel.tip === 'perete' || (sel.tip === 'deschidere' && e.tip === 'usa');
   $('#aIntoarce').hidden = !(sel.tip === 'deschidere' && e.tip === 'usa');
 }
+function elimina(s) {
+  if (s.tip === 'perete') { schita.pereti = schita.pereti.filter(w => w.id !== s.id); schita.deschideri = schita.deschideri.filter(o => o.perete !== s.id); }
+  if (s.tip === 'deschidere') schita.deschideri = schita.deschideri.filter(o => o.id !== s.id);
+  if (s.tip === 'cota') schita.cote = schita.cote.filter(c => c.id !== s.id);
+}
 $('#aSterge').addEventListener('click', () => {
   const s = sel; if (!s) return;
-  modifica(() => {
-    if (s.tip === 'perete') { schita.pereti = schita.pereti.filter(w => w.id !== s.id); schita.deschideri = schita.deschideri.filter(o => o.perete !== s.id); }
-    if (s.tip === 'deschidere') schita.deschideri = schita.deschideri.filter(o => o.id !== s.id);
-    if (s.tip === 'cota') schita.cote = schita.cote.filter(c => c.id !== s.id);
-    sel = null;
-  });
+  modifica(() => { elimina(s); sel = null; });
 });
+/* radiera: tot ce atinge creionul în timpul unei treceri se șterge; o trecere = un singur pas la ↶ */
+function radiaza(p) {
+  const s = gasesteLa(p); if (!s) return;
+  if (!act.undoPus) { istoric.push(JSON.stringify(schita)); if (istoric.length > 300) istoric.shift(); viitor = []; act.undoPus = true; }
+  elimina(s); salveaza(); deseneaza();
+}
 $('#aIntoarce').addEventListener('click', () => { const e = element(sel); if (e) modifica(() => { element(sel).deschidere = ((e.deschidere || 0) + 1) % 4; }); });
 $('#aDim').addEventListener('click', async () => {
   const e = element(sel); if (!e) return;
