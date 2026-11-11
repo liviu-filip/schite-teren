@@ -452,11 +452,7 @@ async function termina() {
   if (k.unealta === 'scara') {
     if (!k.cur || dist(k.start, k.cur) <= 30 / view.s) { deseneaza(); return; }
     const sc = scaraDinGest(k.start, k.cur);
-    deseneaza();
-    const v = await intreaba('Număr trepte', String(sc.trepte), 'decimal');
-    const n = v === null ? 0 : Math.round(parseFloat(String(v).replace(',', '.')));
-    if (!(n >= 1)) { deseneaza(); return; }
-    sc.trepte = n; sc.id = uid();
+    sc.id = uid();                                  /* doar schițată pe plan: numărul și mărimea treptelor nu contează, fără întrebări */
     modifica(() => schita.scari.push(sc));
     return;
   }
@@ -511,7 +507,7 @@ function actualizeazaActiuni() {
   if (!e) sel = null;
   $('#actiuni').hidden = !sel;
   if (!sel) return;
-  $('#aDim').hidden = sel.tip === 'perete' || (sel.tip === 'deschidere' && e.tip === 'usa');
+  $('#aDim').hidden = sel.tip === 'perete' || sel.tip === 'scara' || (sel.tip === 'deschidere' && e.tip === 'usa');
   $('#aIntoarce').hidden = !((sel.tip === 'deschidere' && e.tip === 'usa') || sel.tip === 'scara');
 }
 /* poziția implicită a ușii: spre interior și cu balamaua spre cel mai apropiat perete */
@@ -690,7 +686,7 @@ function r1(v) { return Math.round(v * 10) / 10; }
 function dateExport() {
   return {
     app: 'schite-teren', versiune: 1, nume: schita.nume, creat: schita.creat, modificat: schita.modificat,
-    nota: 'Scările: x1,y1 = începutul urcării, x2,y2 = capătul (sensul urcării), latime în unitățile schiței, trepte = număr de trepte. Coordonatele sunt în unitățile schiței (fără scară), axa y în jos. Dimensiunile reale (cm) sunt în cote[].val și deschideri[].dim. Deschiderile stau pe peretele indicat, între fracțiunile a și b ale lungimii lui (de la x1,y1 spre x2,y2).',
+    nota: 'Scările: x1,y1 = începutul urcării, x2,y2 = capătul (sensul urcării), latime în unitățile schiței, trepte = număr orientativ de trepte (doar desenul contează). Coordonatele sunt în unitățile schiței (fără scară), axa y în jos. Dimensiunile reale (cm) sunt în cote[].val și deschideri[].dim. Deschiderile stau pe peretele indicat, între fracțiunile a și b ale lungimii lui (de la x1,y1 spre x2,y2).',
     pereti: schita.pereti.map(w => ({ id: w.id, x1: r1(w.x1), y1: r1(w.y1), x2: r1(w.x2), y2: r1(w.y2) })),
     deschideri: schita.deschideri.map(o => ({ id: o.id, tip: o.tip, perete: o.perete, a: Math.round(o.a * 1000) / 1000, b: Math.round(o.b * 1000) / 1000, dim: o.dim, varianta: o.tip === 'usa' ? (o.varianta || 'simpla') : undefined, deschidere: o.deschidere || 0 })),
     cote: schita.cote.map(c => ({ id: c.id, x1: r1(c.x1), y1: r1(c.y1), x2: r1(c.x2), y2: r1(c.y2), val: c.val })),
