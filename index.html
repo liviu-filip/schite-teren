@@ -158,8 +158,8 @@ function punctFinal(start, p) {
   }
   return lipestePerete(q, tol) || q;
 }
-function gasesteLa(p) {
-  const tol = 16 / view.s;
+function gasesteLa(p, tolPx) {
+  const tol = (tolPx || 16) / view.s;
   for (const c of schita.cote) if (proiectie(p, A(c), B(c)).d < tol) return { tip: 'cota', id: c.id };
   for (const o of schita.deschideri) {
     const w = perete(o.perete); if (!w) continue;
@@ -507,7 +507,7 @@ $('#aSterge').addEventListener('click', () => {
 });
 /* radiera: tot ce atinge creionul în timpul unei treceri se șterge; o trecere = un singur pas la ↶ */
 function radiaza(p) {
-  const s = gasesteLa(p); if (!s) return;
+  const s = gasesteLa(p, 7); if (!s) return;     /* rază mică: atinge doar ce e chiar sub vârful creionului */
   if (!act.undoPus) { istoric.push(JSON.stringify(schita)); if (istoric.length > 300) istoric.shift(); viitor = []; act.undoPus = true; }
   if (s.tip === 'perete') taiePerete(s.id, p); else elimina(s);   /* peretele: doar segmentul atins; ușa, geamul, cota: întregi */
   salveaza(); deseneaza();
@@ -516,8 +516,8 @@ function radiaza(p) {
 function taiePerete(id, p) {
   const w = perete(id); if (!w) return;
   const L = dist(A(w), B(w)); if (L <= 0) return;
-  const t = proiectie(p, A(w), B(w)).t, d = (14 / view.s) / L;
-  const t0 = Math.max(0, t - d), t1 = Math.min(1, t + d), minL = 6 / view.s;
+  const t = proiectie(p, A(w), B(w)).t, d = (5 / view.s) / L;
+  const t0 = Math.max(0, t - d), t1 = Math.min(1, t + d), minL = 4 / view.s;
   const are1 = t0 * L >= minL, are2 = (1 - t1) * L >= minL;
   const o1 = schita.deschideri.filter(o => o.perete === id);
   schita.deschideri = schita.deschideri.filter(o => o.perete !== id);
