@@ -224,13 +224,14 @@ function deseneazaSchita(g, s, opt) {
     const a = punctPe(w, o.a), b = punctPe(w, o.b), L = dist(a, b); if (L <= 0) continue;
     const u = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }, n = { x: -u.y, y: u.x };
     g.lineCap = 'butt';
-    g.strokeStyle = '#fff'; g.lineWidth = 9 * px; linie(g, a, b);
+    g.strokeStyle = '#fff'; g.lineWidth = (o.tip === 'geam' ? 7 : 9) * px; linie(g, a, b);
     const cul = o.tip === 'geam' ? '#1565c0' : '#b23c17';
     g.strokeStyle = cul; g.lineWidth = 2 * px;
-    for (const p of [a, b]) linie(g, { x: p.x - n.x * 5 * px, y: p.y - n.y * 5 * px }, { x: p.x + n.x * 5 * px, y: p.y + n.y * 5 * px });
+    const cap = o.tip === 'geam' ? 3.5 : 5;
+    for (const p of [a, b]) linie(g, { x: p.x - n.x * cap * px, y: p.y - n.y * cap * px }, { x: p.x + n.x * cap * px, y: p.y + n.y * cap * px });
     let laturaText = false;
     if (o.tip === 'geam') {
-      for (const k of [-3, 0, 3]) linie(g, { x: a.x + n.x * k * px, y: a.y + n.y * k * px }, { x: b.x + n.x * k * px, y: b.y + n.y * k * px });
+      for (const k of [-2, 0, 2]) linie(g, { x: a.x + n.x * k * px, y: a.y + n.y * k * px }, { x: b.x + n.x * k * px, y: b.y + n.y * k * px });
     } else {
       const f = o.deschidere || 0, v = o.varianta || 'simpla', sg = (f & 2) ? -1 : 1;
       const canat = (bal, d, Lc) => {            /* canat cu balamaua în bal, închis spre d (vector unitate), lungime Lc */
