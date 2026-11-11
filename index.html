@@ -242,8 +242,8 @@ function deseneazaSchita(g, s, opt) {
       laturaText = sens > 0;   // textul pe partea opusă deschiderii ușii (aproximativ)
     }
     g.lineCap = 'round';
-    const et = (o.tip === 'geam' ? 'G' + (o.dim ? ' ' + o.dim : '') : 'U');
-    textPeLinie(g, a, b, et, px, cul, o.tip === 'usa' ? !laturaText : false);
+    const et = (o.tip === 'geam' ? 'G' + (o.dim ? ' ' + o.dim : '') : '');
+    if (et) textPeLinie(g, a, b, et, px, cul, o.tip === 'usa' ? !laturaText : false);
   }
   // cotele
   for (const c of schita.cote) {
