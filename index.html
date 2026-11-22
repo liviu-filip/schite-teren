@@ -8,18 +8,21 @@
 <link rel="icon" href="icon-192.png">
 <meta name="theme-color" content="#1f4e79">
 <style>
-  :root { --bara:#1f4e79; --activ:#f0a020; }
+  :root { --bara:#1f4e79; --activ:#f0a020; --hbara:90px; }
   [hidden] { display:none !important; }
   input, textarea { -webkit-user-select:text; user-select:text; touch-action:manipulation; }
   * { box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
   html,body { margin:0; height:100%; overflow:hidden; background:#fff; font-family:system-ui,Roboto,sans-serif; }
-  #bara { position:fixed; top:0; left:0; right:0; height:60px; background:var(--bara); display:flex; align-items:center; gap:6px; padding:0 8px; overflow-x:auto; }
-  #bara button { flex:none; height:46px; min-width:46px; padding:0 14px; border:0; border-radius:8px; background:#2f6aa3; color:#fff; font-size:17px; }
+  /* bara pe 2 rânduri: sus schița și comenzile, jos uneltele de desen */
+  #bara { position:fixed; top:0; left:0; right:0; height:var(--hbara); background:var(--bara); display:flex; flex-direction:column; justify-content:center; gap:4px; padding:3px 6px; }
+  #bara .rand { display:flex; align-items:center; gap:5px; overflow-x:auto; scrollbar-width:none; }
+  #bara button { flex:none; height:38px; min-width:40px; padding:0 11px; border:0; border-radius:7px; background:#2f6aa3; color:#fff; font-size:16px; }
   #bara button.activ { background:var(--activ); color:#000; font-weight:600; }
-  #bara button.mic { padding:0 10px; font-size:20px; }
-  #bara .sep { flex:none; width:1px; height:36px; background:#ffffff55; margin:0 4px; }
+  #bara button.mic { padding:0 9px; font-size:19px; }
+  @media (max-width:900px) { #bara .rand { gap:3px; } #bara button { padding:0 7px; font-size:15px; min-width:34px; } #bara button.mic { padding:0 7px; } #titlu { max-width:180px; } }
+  #bara .sep { flex:none; width:1px; height:28px; background:#ffffff55; margin:0 4px; }
   #titlu { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:transparent !important; text-decoration:underline dotted; }
-  #c { position:fixed; top:60px; left:0; width:100vw; height:calc(100vh - 60px); touch-action:none; display:block; }
+  #c { position:fixed; top:var(--hbara); left:0; width:100vw; height:calc(100vh - var(--hbara)); touch-action:none; display:block; }
   #actiuni { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); display:flex; gap:8px; background:#fff; padding:8px; border-radius:12px; box-shadow:0 2px 12px #0004; }
   #actiuni button { height:48px; padding:0 18px; font-size:17px; border:0; border-radius:8px; background:#e8eef5; }
   #actiuni button.rosu { background:#c62828; color:#fff; }
@@ -43,9 +46,20 @@
 </head>
 <body>
 <div id="bara">
+ <div class="rand">
   <button id="btnSchite" class="mic" title="Schițele">☰</button>
   <button id="titlu" title="Redenumește">Schiță</button>
   <span class="sep"></span>
+  <button id="btnOrto">90° DA</button>
+  <button id="btnGrila" title="Liniile se prind de colțurile pătrățelelor">▦ DA</button>
+  <button id="btnUndo" class="mic" title="Anulează">↶</button>
+  <button id="btnRedo" class="mic" title="Refă">↷</button>
+  <button id="btnFit" class="mic" title="Toată schița pe ecran">⤢</button>
+  <span class="sep"></span>
+  <button id="btnPoze">📷 Poze</button>
+  <button id="btnExport">Trimite</button>
+ </div>
+ <div class="rand">
   <button data-unealta="perete" class="activ">Perete</button>
   <button data-unealta="usa">Ușă</button>
   <button data-unealta="geam">Geam</button>
@@ -58,15 +72,7 @@
   <button data-unealta="text">Text</button>
   <button data-unealta="radiera">Radieră</button>
   <button data-unealta="selectie">Selectează</button>
-  <span class="sep"></span>
-  <button id="btnOrto">90° DA</button>
-  <button id="btnGrila" title="Liniile se prind de colțurile pătrățelelor">▦ DA</button>
-  <button id="btnUndo" class="mic" title="Anulează">↶</button>
-  <button id="btnRedo" class="mic" title="Refă">↷</button>
-  <button id="btnFit" class="mic" title="Toată schița pe ecran">⤢</button>
-  <span class="sep"></span>
-  <button id="btnPoze">📷 Poze</button>
-  <button id="btnExport">Trimite</button>
+ </div>
 </div>
 <canvas id="c"></canvas>
 <div id="actiuni" hidden>
