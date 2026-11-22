@@ -353,7 +353,8 @@ function seteazaDiametru(d) {
 function punctTeava(p, start) {
   const tol = 18 / view.s;
   for (const c of schita.consumatori) if (dist(p, c) < Math.max(tol, (CONS[c.tip] || CONS.aragaz).d * c.m / 2)) return { x: c.x, y: c.y };
-  return start ? punctFinal(start, p) : punctStart(p);
+  const g = grilaOn; grilaOn = false;             /* țeava nu se prinde de colțurile pătrățelelor */
+  try { return start ? punctFinal(start, p) : punctStart(p); } finally { grilaOn = g; }
 }
 function alegeDiametru(titlu, curent) {
   return new Promise(rez => {
