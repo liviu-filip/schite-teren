@@ -305,7 +305,7 @@ function deseneazaConsumator(g, c, px, previz) {
     for (let i = 1; i < 7; i++) { const x = -w / 2 + w * i / 7; linie(g, { x, y: -d / 2 }, { x, y: d / 2 }); }
   }
   /* eticheta: mereu citibilă, sub simbol (în fața lui) */
-  const txt = f.cod ? (c.model || '') : f.eticheta + (c.putere ? ' ' + c.putere + ' kW' : '');
+  const txt = f.cod ? (c.model || '') : f.eticheta + (c.putere ? ' ' + virgula(c.putere) + ' kW' : '');
   if (!txt) { g.restore(); g.lineCap = 'round'; return; }
   g.rotate(-c.ang);                                /* textul rămâne orizontal, în fața simbolului */
   g.font = 'bold ' + (13 * px) + 'px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -377,6 +377,9 @@ function alegeDiametru(titlu, curent) {
     m.hidden = false;
   });
 }
+/* numerele se scriu cu virgulă pe ecran; în date rămân cu punct */
+const virgula = v => String(v == null ? '' : v).replace('.', ',');
+function textCota(c) { return c.val ? virgula(c.val) + ' ' + (c.u || 'cm') : ''; }
 function linie(g, a, b) { g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
 function textPeLinie(g, a, b, txt, px, culoare, dedesubt) {
   if (!txt) return;
@@ -467,7 +470,7 @@ function deseneazaSchita(g, s, opt) {
       linie(g, { x: p.x - n.x * 8 * px, y: p.y - n.y * 8 * px }, { x: p.x + n.x * 8 * px, y: p.y + n.y * 8 * px });
       linie(g, { x: p.x - (u.x + n.x) * 4 * px, y: p.y - (u.y + n.y) * 4 * px }, { x: p.x + (u.x + n.x) * 4 * px, y: p.y + (u.y + n.y) * 4 * px });
     }
-    textPeLinie(g, a, b, c.val, px, '#2e7d32', false);
+    textPeLinie(g, a, b, textCota(c), px, '#2e7d32', false);
   }
   for (const c of schita.scari) deseneazaScara(g, c, px, '#6a1b9a');
   for (const c of schita.consumatori) deseneazaConsumator(g, c, px, false);
@@ -646,7 +649,7 @@ async function termina() {
     deseneaza();
     const v = await intreaba('Cota (m), ex. 3,45', '', 'decimal');
     if (v === null || v.trim() === '') { deseneaza(); return; }
-    modifica(() => schita.cote.push({ id: uid(), x1: k.start.x, y1: k.start.y, x2: k.cur.x, y2: k.cur.y, val: v.trim(), u: 'm' }));
+    modifica(() => schita.cote.push({ id: uid(), x1: k.start.x, y1: k.start.y, x2: k.cur.x, y2: k.cur.y, val: v.trim().replace(',', '.'), u: 'm' }));
     return;
   }
   const w = perete(k.perete); if (!w) return;
@@ -794,8 +797,8 @@ $('#aDim').addEventListener('click', async () => {
     const id0 = sel.id; modifica(() => { schita.consumatori.find(q => q.id === id0).model = v.trim().toUpperCase(); }); return;
   }
   if (sel.tip === 'consumator') {
-    const v = await intreaba((CONS[e.tip] ? CONS[e.tip].nume : 'Consumator') + ': putere (kW), gol = fără', e.putere || '', 'decimal'); if (v === null) return;
-    const id0 = sel.id; modifica(() => { schita.consumatori.find(q => q.id === id0).putere = v.trim(); }); return;
+    const v = await intreaba((CONS[e.tip] ? CONS[e.tip].nume : 'Consumator') + ': putere (kW), gol = fără', virgula(e.putere), 'decimal'); if (v === null) return;
+    const id0 = sel.id; modifica(() => { schita.consumatori.find(q => q.id === id0).putere = v.trim().replace(',', '.'); }); return;
   }
   if (sel.tip === 'scara') {
     const v = await intreaba('Număr trepte', String(e.trepte), 'decimal'); if (v === null) return;
@@ -803,10 +806,10 @@ $('#aDim').addEventListener('click', async () => {
     const id0 = sel.id; modifica(() => { schita.scari.find(q => q.id === id0).trepte = n; }); return;
   }
   const cota = sel.tip === 'cota';
-  const v = await intreaba(cota ? 'Cota (m), ex. 3,45' : (e.tip === 'geam' ? 'Geam: lățime x înălțime (cm)' : 'Ușă: lățime (cm)'), cota ? e.val : e.dim, (cota || e.tip !== 'geam') ? 'decimal' : 'dim');
+  const v = await intreaba(cota ? 'Cota (m), ex. 3,45' : (e.tip === 'geam' ? 'Geam: lățime x înălțime (cm)' : 'Ușă: lățime (cm)'), cota ? virgula(e.val) : e.dim, (cota || e.tip !== 'geam') ? 'decimal' : 'dim');
   if (v === null) return;
   const id = sel.id;
-  modifica(() => { const x = (cota ? schita.cote : schita.deschideri).find(q => q.id === id); if (cota) { x.val = v.trim(); x.u = 'm'; } else x.dim = v.trim(); });
+  modifica(() => { const x = (cota ? schita.cote : schita.deschideri).find(q => q.id === id); if (cota) { x.val = v.trim().replace(',', '.'); x.u = 'm'; } else x.dim = v.trim(); });
 });
 
 /* ---------- ferestre de dialog ---------- */
@@ -827,7 +830,7 @@ function intreaba(titlu, valoare, mod) {
         const b = document.createElement('button'); b.textContent = c; if (c === '⌫' || c === 'x' || c === ',') b.className = 'alt';
         b.onclick = () => {
           if (c === '⌫') inp.value = proaspat ? '' : inp.value.slice(0, -1);
-          else inp.value = (proaspat ? '' : inp.value) + (c === ',' ? '.' : c);
+          else inp.value = (proaspat ? '' : inp.value) + c;
           proaspat = false;
         };
         t.appendChild(b);
