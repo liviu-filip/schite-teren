@@ -319,8 +319,8 @@ function deseneazaConsumator(g, c, px, previz) {
   g.restore(); g.lineCap = 'round';
 }
 /* poziția: lipit de peretele cel mai apropiat (spatele pe perete, fața spre cameră); altfel liber, drept */
-function consumatorLa(tip, p) {
-  const m = 38 / view.s, f = CONS[tip], c = { tip, x: p.x, y: p.y, ang: 0, m };
+function consumatorLa(tip, p, m0) {
+  const m = m0 || 38 / view.s, f = CONS[tip], c = { tip, x: p.x, y: p.y, ang: 0, m };
   if (f.peTeava) {                                 /* pe țeava cea mai apropiată, în lungul ei */
     let bt = null, bdt = 40 / view.s;
     for (const t of schita.conducte) { const r = proiectie(p, A(t), B(t)); if (r.d < bdt) { bdt = r.d; bt = { t, r }; } }
@@ -402,6 +402,48 @@ async function editeazaText() {
   const e = element(sel); if (!e) return; const id0 = e.id;
   const v = await intreaba('Text (gol = șterge)', e.t, 'text'); if (v === null) return;
   modifica(() => { if (v.trim()) schita.texte.find(q => q.id === id0).t = v.trim(); else schita.texte = schita.texte.filter(q => q.id !== id0); });
+}
+/* ---------- mutarea cu Selectează: de fiecare dată se pornește din starea de la apăsare ---------- */
+function muta(p) {
+  const k = act, d0 = { x: p.x - k.start.x, y: p.y - k.start.y };
+  if (!k.mutat) {
+    if (Math.hypot(d0.x, d0.y) * view.s < 6) return;      /* mișcare mică: rămâne doar selecție */
+    istoric.push(k.snap); if (istoric.length > 300) istoric.shift(); viitor = []; k.mutat = true;
+  }
+  schita = JSON.parse(k.snap);
+  const e = element(sel); if (!e) return;
+  const tip = sel.tip, eps = 0.5;
+  const pas = v => grilaCoord(v);                          /* pereții, cotele, scările: pe pătrățele */
+  const d = (tip === 'perete' || tip === 'cota' || tip === 'scara') ? { x: pas(d0.x), y: pas(d0.y) } : d0;
+  const trage = (lista, x, y, exclus) => {                 /* capetele legate de (x,y) vin după */
+    for (const q of lista) {
+      if (q === exclus) continue;
+      if (Math.abs(q.x1 - x) < eps && Math.abs(q.y1 - y) < eps) { q.x1 += d.x; q.y1 += d.y; }
+      if (Math.abs(q.x2 - x) < eps && Math.abs(q.y2 - y) < eps) { q.x2 += d.x; q.y2 += d.y; }
+    }
+  };
+  if (tip === 'perete' || tip === 'conducta') {
+    const lista = tip === 'perete' ? schita.pereti : schita.conducte;
+    const a = A(e), b = B(e);
+    if (tip === 'conducta') for (const c of schita.consumatori) if (CONS[c.tip] && CONS[c.tip].peTeava && proiectie(c, a, b).d < 1) { c.x += d.x; c.y += d.y; }
+    trage(lista, a.x, a.y, e); trage(lista, b.x, b.y, e);
+    e.x1 += d.x; e.y1 += d.y; e.x2 += d.x; e.y2 += d.y;
+  } else if (tip === 'cota' || tip === 'scara') {
+    e.x1 += d.x; e.y1 += d.y; e.x2 += d.x; e.y2 += d.y;
+  } else if (tip === 'text') {
+    e.x += d.x; e.y += d.y;
+  } else if (tip === 'deschidere') {                       /* ușa / geamul alunecă pe perete */
+    const w = perete(e.perete); if (w) {
+      const L = dist(A(w), B(w)) || 1, u = { x: (w.x2 - w.x1) / L, y: (w.y2 - w.y1) / L };
+      let dt = (d0.x * u.x + d0.y * u.y) / L;
+      dt = Math.max(-e.a, Math.min(1 - e.b, dt)); e.a += dt; e.b += dt;
+    }
+  } else if (tip === 'consumator') {                       /* se lipește din nou de perete / țeavă */
+    const tinta = { x: e.x + d0.x, y: e.y + d0.y }, c = consumatorLa(e.tip, tinta, e.m);
+    const liber = c.x === tinta.x && c.y === tinta.y;
+    e.x = c.x; e.y = c.y; if (!liber) e.ang = c.ang;
+  }
+  deseneaza();
 }
 function linie(g, a, b) { g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
 function textPeLinie(g, a, b, txt, px, culoare, dedesubt) {
@@ -607,8 +649,10 @@ cv.addEventListener('wheel', e => {
 
 /* ---------- uneltele ---------- */
 function incepeActiune(pid, p, deget) {
-  if (unealta === 'selectie') {
-    sel = gasesteLa(p); actualizeazaActiuni(); deseneaza(); return;
+  if (unealta === 'selectie') {                  /* atingere = selectează; tras = mută */
+    sel = gasesteLa(p); actualizeazaActiuni(); deseneaza();
+    if (sel) act = { pid, deget, unealta: 'muta', start: p, snap: JSON.stringify(schita), mutat: false };
+    return;
   }
   if (unealta === 'radiera') { act = { pid, deget, unealta }; radiaza(p); return; }
   if (unealta === 'usa') {                       /* atingerea unei uși existente: următoarea poziție */
@@ -640,6 +684,7 @@ function incepeActiune(pid, p, deget) {
 function continuaActiune(p) {
   if (!act) return;
   if (act.unealta === 'radiera') { radiaza(p); return; }
+  if (act.unealta === 'muta') { muta(p); return; }
   if (act.unealta === 'consumator') { act.cur = p; deseneaza(); return; }
   if (act.unealta === 'conducta') { act.cur = punctTeava(p, act.start); deseneaza(); return; }
   if (act.unealta === 'perete' || act.unealta === 'cota' || act.unealta === 'scara') act.cur = punctFinal(act.start, p);
@@ -649,6 +694,7 @@ function continuaActiune(p) {
 async function termina() {
   const k = act; act = null;
   if (!k || k.unealta === 'radiera') return;
+  if (k.unealta === 'muta') { if (k.mutat) { salveaza(); actualizeazaActiuni(); } deseneaza(); return; }
   if (k.unealta === 'perete') {
     if (k.cur && dist(k.start, k.cur) > 8 / view.s)
       modifica(() => schita.pereti.push({ id: uid(), x1: k.start.x, y1: k.start.y, x2: k.cur.x, y2: k.cur.y }));
