@@ -378,7 +378,10 @@ function alegeDiametru(titlu, curent) {
   });
 }
 /* numerele se scriu cu virgulă pe ecran; în date rămân cu punct */
-const virgula = v => String(v == null ? '' : v).replace('.', ',');
+const virgula = v => String(v == null ? '' : v).replace(/\./g, ',');
+const punct = v => String(v == null ? '' : v).trim().replace(/,/g, '.');
+/* suprafața geamului în mp, din „lățime x înălțime” în metri */
+function suprafata(dim) { const m = punct(dim).match(/^([\d.]+)\s*x\s*([\d.]+)$/i); return m ? Math.round(parseFloat(m[1]) * parseFloat(m[2]) * 100) / 100 : undefined; }
 function textCota(c) { return c.val ? virgula(c.val) + ' m' : ''; }
 function linie(g, a, b) { g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
 function textPeLinie(g, a, b, txt, px, culoare, dedesubt) {
@@ -457,7 +460,7 @@ function deseneazaSchita(g, s, opt) {
       laturaText = sg > 0;   // textul pe partea opusă deschiderii ușii (aproximativ)
     }
     g.lineCap = 'round';
-    const et = (o.tip === 'geam' ? 'G' + (o.dim ? ' ' + o.dim : '') : (o.varianta === 'sticla' && o.dim ? o.dim : ''));
+    const et = (o.tip === 'geam' ? 'G' + (o.dim ? ' ' + virgula(o.dim) : '') : (o.varianta === 'sticla' && o.dim ? virgula(o.dim) : ''));
     if (et) textPeLinie(g, a, b, et, px, cul, o.tip === 'usa' ? !laturaText : false);
   }
   // cotele
@@ -663,11 +666,11 @@ async function termina() {
   let dim = '';                               /* la ușă lățimea nu contează: fără întrebare */
   const varianta = k.unealta === 'usa' ? VARIANTE[varUsa] : undefined;
   if (k.unealta === 'geam' || varianta === 'sticla') {
-    dim = await intreaba(k.unealta === 'geam' ? 'Geam: lățime x înălțime (cm), ex. 100x120' : 'Sticla ușii: lățime x înălțime (cm), ex. 60x150', '', 'dim');
+    dim = await intreaba(k.unealta === 'geam' ? 'Geam: lățime x înălțime (m), ex. 1,00x1,20' : 'Sticla ușii: lățime x înălțime (m), ex. 0,60x1,50', '', 'dim');
     if (dim === null) { deseneaza(); return; }
   }
   const poz = k.unealta === 'usa' ? pozitieImplicita(w, a, b) : 0;
-  const o = { id: uid(), tip: k.unealta, perete: w.id, a, b, dim: dim.trim(), deschidere: poz };
+  const o = { id: uid(), tip: k.unealta, perete: w.id, a, b, dim: punct(dim), deschidere: poz };
   if (varianta) o.varianta = varianta;
   modifica(() => schita.deschideri.push(o));
 }
@@ -806,10 +809,10 @@ $('#aDim').addEventListener('click', async () => {
     const id0 = sel.id; modifica(() => { schita.scari.find(q => q.id === id0).trepte = n; }); return;
   }
   const cota = sel.tip === 'cota';
-  const v = await intreaba(cota ? 'Cota (m), ex. 3,45' : (e.tip === 'geam' ? 'Geam: lățime x înălțime (cm)' : 'Ușă: lățime (cm)'), cota ? virgula(e.val) : e.dim, (cota || e.tip !== 'geam') ? 'decimal' : 'dim');
+  const v = await intreaba(cota ? 'Cota (m), ex. 3,45' : (e.tip === 'geam' ? 'Geam: lățime x înălțime (m)' : 'Sticla ușii: lățime x înălțime (m)'), virgula(cota ? e.val : e.dim), cota ? 'decimal' : 'dim');
   if (v === null) return;
   const id = sel.id;
-  modifica(() => { const x = (cota ? schita.cote : schita.deschideri).find(q => q.id === id); if (cota) { x.val = v.trim().replace(',', '.'); } else x.dim = v.trim(); });
+  modifica(() => { const x = (cota ? schita.cote : schita.deschideri).find(q => q.id === id); if (cota) x.val = punct(v); else x.dim = punct(v); });
 });
 
 /* ---------- ferestre de dialog ---------- */
@@ -817,7 +820,7 @@ function intreaba(titlu, valoare, mod) {
   return new Promise(rez => {
     const m = $('#modal');
     const tast = mod === 'decimal' || mod === 'dim';   /* numere: tastatura proprie, fără tastatura sistemului */
-    const taste = tast ? ['7','8','9','4','5','6','1','2','3',mod === 'dim' ? 'x' : ',','0','⌫'] : [];
+    const taste = tast ? (mod === 'dim' ? ['7','8','9','4','5','6','1','2','3',',','0','x','⌫'] : ['7','8','9','4','5','6','1','2','3',',','0','⌫']) : [];
     m.innerHTML = '<div class="cutie"><h3></h3><input><div class="tastatura"></div><div class="butoane"><button class="nu">Anulează</button>' + (mod === 'dim' ? '<button class="fara">Fără dimensiune</button>' : '') + '<button class="ok">OK</button></div></div>';
     m.querySelector('h3').textContent = titlu;
     const inp = m.querySelector('input'); inp.value = valoare || '';
@@ -828,6 +831,7 @@ function intreaba(titlu, valoare, mod) {
       const t = m.querySelector('.tastatura');
       taste.forEach(c => {
         const b = document.createElement('button'); b.textContent = c; if (c === '⌫' || c === 'x' || c === ',') b.className = 'alt';
+        if (c === '⌫' && taste.length === 13) b.style.gridColumn = 'span 3';
         b.onclick = () => {
           if (c === '⌫') inp.value = proaspat ? '' : inp.value.slice(0, -1);
           else inp.value = (proaspat ? '' : inp.value) + c;
@@ -901,9 +905,9 @@ function r1(v) { return Math.round(v * 10) / 10; }
 function dateExport() {
   return {
     app: 'schite-teren', versiune: 1, nume: schita.nume, creat: schita.creat, modificat: schita.modificat,
-    nota: 'Scările: x1,y1 = începutul urcării, x2,y2 = capătul (sensul urcării), latime în unitățile schiței, trepte = număr orientativ de trepte (doar desenul contează). Coordonatele sunt în unitățile schiței (fără scară), axa y în jos. Dimensiunile reale: cote[].val în metri, deschideri[].dim în cm. Deschiderile stau pe peretele indicat, între fracțiunile a și b ale lungimii lui (de la x1,y1 spre x2,y2). Consumatorii (aragaz, centrala, convector) și contorizarea (cv, pr, prm, pm): x,y = centrul simbolului, unghi în grade (0 = spatele spre y mic), perete = peretele de care e lipit (dacă e), putere în kW (opțional); la cv/pr/prm/pm, model = tipul (ex. G4). Robinetul și electrovalva stau pe țeava indicată (conducta). Conducte = liniile instalației de gaz, cu diametrul scris (ex. 3/4", PE 32).',
+    nota: 'Scările: x1,y1 = începutul urcării, x2,y2 = capătul (sensul urcării), latime în unitățile schiței, trepte = număr orientativ de trepte (doar desenul contează). Coordonatele sunt în unitățile schiței (fără scară), axa y în jos. Dimensiunile reale: cote[].val în metri, deschideri[].dim în metri (lățime x înălțime), cu suprafata_mp calculată. Deschiderile stau pe peretele indicat, între fracțiunile a și b ale lungimii lui (de la x1,y1 spre x2,y2). Consumatorii (aragaz, centrala, convector) și contorizarea (cv, pr, prm, pm): x,y = centrul simbolului, unghi în grade (0 = spatele spre y mic), perete = peretele de care e lipit (dacă e), putere în kW (opțional); la cv/pr/prm/pm, model = tipul (ex. G4). Robinetul și electrovalva stau pe țeava indicată (conducta). Conducte = liniile instalației de gaz, cu diametrul scris (ex. 3/4", PE 32).',
     pereti: schita.pereti.map(w => ({ id: w.id, x1: r1(w.x1), y1: r1(w.y1), x2: r1(w.x2), y2: r1(w.y2) })),
-    deschideri: schita.deschideri.map(o => ({ id: o.id, tip: o.tip, perete: o.perete, a: Math.round(o.a * 1000) / 1000, b: Math.round(o.b * 1000) / 1000, dim: o.dim, varianta: o.tip === 'usa' ? (o.varianta || 'simpla') : undefined, deschidere: o.deschidere || 0 })),
+    deschideri: schita.deschideri.map(o => ({ id: o.id, tip: o.tip, perete: o.perete, a: Math.round(o.a * 1000) / 1000, b: Math.round(o.b * 1000) / 1000, dim: o.dim, suprafata_mp: suprafata(o.dim), varianta: o.tip === 'usa' ? (o.varianta || 'simpla') : undefined, deschidere: o.deschidere || 0 })),
     cote: schita.cote.map(c => ({ id: c.id, x1: r1(c.x1), y1: r1(c.y1), x2: r1(c.x2), y2: r1(c.y2), val: c.val })),
     scari: schita.scari.map(c => ({ id: c.id, x1: r1(c.x1), y1: r1(c.y1), x2: r1(c.x2), y2: r1(c.y2), latime: r1(c.latime), trepte: c.trepte })),
     consumatori: schita.consumatori.map(c => ({ id: c.id, tip: c.tip, x: r1(c.x), y: r1(c.y), unghi: Math.round(((c.ang * 180 / Math.PI) % 360 + 360) % 360), perete: CONS[c.tip] && CONS[c.tip].peTeava ? undefined : peretePentru(c), conducta: CONS[c.tip] && CONS[c.tip].peTeava ? teavaPentru(c) : undefined, putere: c.putere || undefined, model: c.model || undefined })),
