@@ -1,6 +1,6 @@
 // Lucrul offline: fișierele aplicației stau în memoria tabletei.
 // Cu internet se ia întâi versiunea nouă de pe server (fără cache-ul browserului); fără internet, copia salvată.
-const V = 'schite-v32';
+const V = 'schite-v33';
 const F = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(F))); self.skipWaiting(); });
 self.addEventListener('activate', e => {
