@@ -59,6 +59,7 @@
   <button data-unealta="selectie">Selectează</button>
   <span class="sep"></span>
   <button id="btnOrto">90° DA</button>
+  <button id="btnGrila" title="Liniile se prind de colțurile pătrățelelor">▦ DA</button>
   <button id="btnUndo" class="mic" title="Anulează">↶</button>
   <button id="btnRedo" class="mic" title="Refă">↷</button>
   <button id="btnFit" class="mic" title="Toată schița pe ecran">⤢</button>
@@ -143,9 +144,26 @@ function lipestePerete(p, tol) {
   for (const w of schita.pereti) { const r = proiectie(p, A(w), B(w)); if (r.d < bd) { bd = r.d; best = r.q; } }
   return best;
 }
+/* prinderea de grilă: colțurile pătrățelelor (doar când grila se vede pe ecran) */
+const PAS = 20;
+let grilaOn = true;
+try { grilaOn = localStorage.getItem('schite_grila') !== 'nu'; } catch (e) {}
+function nodGrila(p) {
+  if (!grilaOn || PAS * view.s < 7) return null;
+  return { x: Math.round(p.x / PAS) * PAS, y: Math.round(p.y / PAS) * PAS };
+}
+const grilaCoord = v => (grilaOn && PAS * view.s >= 7) ? Math.round(v / PAS) * PAS : v;
+/* pe un perete: punctul de pe perete cel mai apropiat de colțul pătrățelului; altfel colțul pătrățelului */
+function lipesteGrila(p, tol) {
+  const n = nodGrila(p);
+  let best = null, bd = tol;
+  for (const w of schita.pereti) { const r = proiectie(p, A(w), B(w)); if (r.d < bd) { bd = r.d; best = w; } }
+  if (best) return n ? proiectie(n, A(best), B(best)).q : proiectie(p, A(best), B(best)).q;
+  return n;
+}
 function punctStart(p) {
   const tol = 18 / view.s;
-  return lipesteCapat(p, tol) || lipestePerete(p, tol) || { x: p.x, y: p.y };
+  return lipesteCapat(p, tol) || lipesteGrila(p, tol) || { x: p.x, y: p.y };
 }
 function punctFinal(start, p) {
   const tol = 18 / view.s;
@@ -161,10 +179,11 @@ function punctFinal(start, p) {
         if (oriz && Math.abs(e.x - q.x) < tol) { q.x = e.x; return q; }
         if (vert && Math.abs(e.y - q.y) < tol) { q.y = e.y; return q; }
       }
+      if (oriz) q.x = grilaCoord(q.x); else q.y = grilaCoord(q.y);   /* lungimea: până la colțul pătrățelului */
       return q;
     }
   }
-  return lipestePerete(q, tol) || q;
+  return lipesteGrila(q, tol) || q;
 }
 function gasesteLa(p, tolPx) {
   const tol = (tolPx || 16) / view.s;
@@ -196,7 +215,7 @@ function redimensioneaza() {
   deseneaza();
 }
 function grila() {
-  const pas = 20;
+  const pas = PAS;
   if (pas * view.s < 7) return;
   const a = lume(0, 0), b = lume(cv.clientWidth, cv.clientHeight);
   ctx.beginPath();
@@ -571,7 +590,7 @@ function incepeActiune(pid, p, deget) {
   }
   if (unealta === 'conducta') { act = { pid, deget, unealta, start: punctTeava(p), cur: null }; deseneaza(); return; }
   if (unealta === 'perete' || unealta === 'cota' || unealta === 'scara') {
-    const start = unealta === 'perete' || unealta === 'scara' ? punctStart(p) : (lipesteCapat(p, 18 / view.s) || p);
+    const start = punctStart(p);
     act = { pid, deget, unealta, start, cur: null };
   } else {
     let best = null, bd = 30 / view.s;
@@ -666,6 +685,9 @@ document.querySelectorAll('[data-unealta]').forEach(b => b.addEventListener('cli
   actualizeazaActiuni(); deseneaza();
 }));
 if (diamCurent) seteazaDiametru(diamCurent);
+function arataGrila() { $('#btnGrila').textContent = grilaOn ? '▦ DA' : '▦ NU'; $('#btnGrila').classList.toggle('activ', !grilaOn); }
+arataGrila();
+$('#btnGrila').addEventListener('click', () => { grilaOn = !grilaOn; try { localStorage.setItem('schite_grila', grilaOn ? 'da' : 'nu'); } catch (e) {} arataGrila(); });
 $('#btnOrto').addEventListener('click', () => { orto = !orto; $('#btnOrto').textContent = orto ? '90° DA' : '90° NU'; $('#btnOrto').classList.toggle('activ', !orto); });
 $('#btnUndo').addEventListener('click', undo);
 $('#btnRedo').addEventListener('click', redo);
