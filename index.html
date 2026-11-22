@@ -1201,7 +1201,13 @@ window.addEventListener('resize', redimensioneaza);
   redimensioneaza();
   deschide(t[ultima] || Object.values(t)[0] || nouaSchita());
 })();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  /* versiune nouă instalată: se reîncarcă o singură dată, ca s-o vezi imediat (schițele sunt deja salvate) */
+  const aveaVersiune = !!navigator.serviceWorker.controller;
+  let reincarcat = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (aveaVersiune && !reincarcat && !act) { reincarcat = true; location.reload(); } });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
+}
 </script>
 </body>
 </html>
