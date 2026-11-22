@@ -55,6 +55,7 @@
   <button data-unealta="conducta" title="Linie de instalație; apasă din nou ca să schimbi diametrul">Țeavă</button>
   <button data-unealta="consumator" data-tipuri="robinet,electrovalva" title="Apasă din nou: Robinet / Electrovalvă">Robinet</button>
   <button data-unealta="cota">Cotă</button>
+  <button data-unealta="text">Text</button>
   <button data-unealta="radiera">Radieră</button>
   <button data-unealta="selectie">Selectează</button>
   <span class="sep"></span>
@@ -101,9 +102,9 @@ function salveaza() {
   const t = citesteToate(); t[schita.id] = schita; scrieToate(t);
   try { localStorage.setItem(CHEIE + '_ultima', schita.id); } catch (e) {}
 }
-function nouaSchita(nume) { return { id: uid(), nume: nume || 'Schiță fără nume', creat: acum(), modificat: acum(), pereti: [], deschideri: [], cote: [], scari: [], consumatori: [], conducte: [] }; }
+function nouaSchita(nume) { return { id: uid(), nume: nume || 'Schiță fără nume', creat: acum(), modificat: acum(), pereti: [], deschideri: [], cote: [], scari: [], consumatori: [], conducte: [], texte: [] }; }
 function deschide(s) {
-  schita = s; if (!schita.scari) schita.scari = []; if (!schita.consumatori) schita.consumatori = []; if (!schita.conducte) schita.conducte = []; istoric = []; viitor = []; sel = null; act = null;
+  schita = s; if (!schita.scari) schita.scari = []; if (!schita.consumatori) schita.consumatori = []; if (!schita.conducte) schita.conducte = []; if (!schita.texte) schita.texte = []; istoric = []; viitor = []; sel = null; act = null;
   $('#titlu').textContent = schita.nume;
   salveaza(); actualizeazaActiuni(); potriveste();
 }
@@ -196,6 +197,7 @@ function gasesteLa(p, tolPx) {
     const r = colturiScara(c), t = (p.x - r.a.x) * r.u.x + (p.y - r.a.y) * r.u.y, q = (p.x - r.a.x) * r.n.x + (p.y - r.a.y) * r.n.y;
     if (t >= -tol && t <= r.L + tol && Math.abs(q) <= r.h + tol) return { tip: 'scara', id: c.id };
   }
+  for (const t of schita.texte) { const r = cutieText(t); if (p.x >= r.x0 - tol && p.x <= r.x1 + tol && p.y >= r.y0 - tol && p.y <= r.y1 + tol) return { tip: 'text', id: t.id }; }
   for (const c of schita.consumatori) if (inConsumator(c, p, tol)) return { tip: 'consumator', id: c.id };
   for (const c of schita.conducte) if (proiectie(p, A(c), B(c)).d < tol * 0.8) return { tip: 'conducta', id: c.id };
   for (const w of schita.pereti) if (proiectie(p, A(w), B(w)).d < tol) return { tip: 'perete', id: w.id };
@@ -203,7 +205,7 @@ function gasesteLa(p, tolPx) {
 }
 function element(s) {
   if (!s) return null;
-  const lista = s.tip === 'cota' ? schita.cote : s.tip === 'scara' ? schita.scari : s.tip === 'consumator' ? schita.consumatori : s.tip === 'conducta' ? schita.conducte : s.tip === 'deschidere' ? schita.deschideri : schita.pereti;
+  const lista = s.tip === 'cota' ? schita.cote : s.tip === 'scara' ? schita.scari : s.tip === 'consumator' ? schita.consumatori : s.tip === 'conducta' ? schita.conducte : s.tip === 'text' ? schita.texte : s.tip === 'deschidere' ? schita.deschideri : schita.pereti;
   return lista.find(e => e.id === s.id) || null;
 }
 
@@ -383,6 +385,24 @@ const punct = v => String(v == null ? '' : v).trim().replace(/,/g, '.');
 /* suprafața geamului în mp, din „lățime x înălțime” în metri */
 function suprafata(dim) { const m = punct(dim).match(/^([\d.]+)\s*x\s*([\d.]+)$/i); return m ? Math.round(parseFloat(m[1]) * parseFloat(m[2]) * 100) / 100 : undefined; }
 function textCota(c) { return c.val ? virgula(c.val) + ' m' : ''; }
+/* ---------- texte libere pe schiță: x,y = colțul stânga-sus, h = înălțimea literei ---------- */
+const masura = document.createElement('canvas').getContext('2d');
+function cutieText(t) {
+  masura.font = t.h + 'px system-ui,sans-serif';
+  const rand = String(t.t).split('\n'), w = Math.max(...rand.map(r => masura.measureText(r).width));
+  return { x0: t.x, y0: t.y, x1: t.x + w, y1: t.y + rand.length * t.h * 1.25 };
+}
+function deseneazaText(g, t) {
+  const r = cutieText(t), pad = t.h * 0.2;
+  g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(r.x0 - pad, r.y0 - pad, r.x1 - r.x0 + 2 * pad, r.y1 - r.y0 + 2 * pad);
+  g.fillStyle = '#222'; g.font = t.h + 'px system-ui,sans-serif'; g.textAlign = 'left'; g.textBaseline = 'top';
+  String(t.t).split('\n').forEach((rand, i) => g.fillText(rand, t.x, t.y + i * t.h * 1.25));
+}
+async function editeazaText() {
+  const e = element(sel); if (!e) return; const id0 = e.id;
+  const v = await intreaba('Text (gol = șterge)', e.t, 'text'); if (v === null) return;
+  modifica(() => { if (v.trim()) schita.texte.find(q => q.id === id0).t = v.trim(); else schita.texte = schita.texte.filter(q => q.id !== id0); });
+}
 function linie(g, a, b) { g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
 function textPeLinie(g, a, b, txt, px, culoare, dedesubt) {
   if (!txt) return;
@@ -406,6 +426,7 @@ function deseneazaSchita(g, s, opt) {
     g.strokeStyle = '#f0a02099'; g.lineWidth = 16 * px;
     if (e && opt.sel.tip === 'deschidere') { const w = perete(e.perete); if (w) linie(g, punctPe(w, e.a), punctPe(w, e.b)); }
     else if (e && opt.sel.tip === 'scara') { const r = colturiScara(e); g.beginPath(); g.moveTo(r.c[0].x, r.c[0].y); for (let i = 1; i < 4; i++) g.lineTo(r.c[i].x, r.c[i].y); g.closePath(); g.stroke(); }
+    else if (e && opt.sel.tip === 'text') { const r = cutieText(e); g.lineWidth = 10 * px; g.strokeRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0); }
     else if (e && opt.sel.tip === 'consumator') { const k = coltConsumator(e); g.beginPath(); g.moveTo(k[0].x, k[0].y); for (let i = 1; i < 4; i++) g.lineTo(k[i].x, k[i].y); g.closePath(); g.stroke(); }
     else if (e) linie(g, A(e), B(e));
   }
@@ -477,6 +498,7 @@ function deseneazaSchita(g, s, opt) {
   }
   for (const c of schita.scari) deseneazaScara(g, c, px, '#6a1b9a');
   for (const c of schita.consumatori) deseneazaConsumator(g, c, px, false);
+  for (const t of schita.texte) deseneazaText(g, t);
   // desenul în curs
   if (opt.act) {
     const k = opt.act;
@@ -513,6 +535,7 @@ function limite() {
   }
   for (const c of schita.scari) p.push(...colturiScara(c).c);
   for (const c of schita.conducte) p.push(A(c), B(c));
+  for (const t of schita.texte) { const r = cutieText(t); p.push({ x: r.x0, y: r.y0 }, { x: r.x1, y: r.y1 }); }
   for (const c of schita.consumatori) { p.push(...coltConsumator(c)); p.push({ x: c.x, y: c.y + c.m }, { x: c.x, y: c.y - c.m }); }
   if (!p.length) return null;
   return { x0: Math.min(...p.map(q => q.x)), y0: Math.min(...p.map(q => q.y)), x1: Math.max(...p.map(q => q.x)), y1: Math.max(...p.map(q => q.y)) };
@@ -594,6 +617,13 @@ function incepeActiune(pid, p, deget) {
   }
   if (unealta === 'consumator') {                /* se poate trage cu creionul până la locul dorit; se pune la ridicare */
     act = { pid, deget, unealta, tip: tipCons, cur: p }; deseneaza(); return;
+  }
+  if (unealta === 'text') {                       /* atingerea unui text existent îl editează; altfel text nou aici */
+    const g0 = gasesteLa(p);
+    if (g0 && g0.tip === 'text') { sel = g0; editeazaText(); sel = null; return; }
+    act = null;
+    intreaba('Text', '', 'text').then(v => { if (v && v.trim()) modifica(() => schita.texte.push({ id: uid(), x: p.x, y: p.y, t: v.trim(), h: 18 / view.s })); });
+    return;
   }
   if (unealta === 'conducta') { act = { pid, deget, unealta, start: punctTeava(p), cur: null }; deseneaza(); return; }
   if (unealta === 'perete' || unealta === 'cota' || unealta === 'scara') {
@@ -711,7 +741,7 @@ function actualizeazaActiuni() {
   $('#aDim').hidden = sel.tip === 'perete' || sel.tip === 'scara' || (sel.tip === 'deschidere' && e.tip === 'usa') || (sel.tip === 'consumator' && CONS[e.tip] && CONS[e.tip].peTeava);
   $('#aIntoarce').hidden = !((sel.tip === 'deschidere' && e.tip === 'usa') || sel.tip === 'scara' || (sel.tip === 'consumator' && !(CONS[e.tip] && CONS[e.tip].peTeava)));
   $('#aIntoarce').textContent = sel.tip === 'consumator' ? 'Rotește' : sel.tip === 'scara' ? 'Întoarce' : 'Întoarce ușa';
-  $('#aDim').textContent = sel.tip === 'conducta' ? 'Diametru' : sel.tip === 'consumator' ? (CONS[e.tip] && CONS[e.tip].cod ? 'Tip' : 'Putere kW') : 'Dimensiune';
+  $('#aDim').textContent = sel.tip === 'text' ? 'Editează' : sel.tip === 'conducta' ? 'Diametru' : sel.tip === 'consumator' ? (CONS[e.tip] && CONS[e.tip].cod ? 'Tip' : 'Putere kW') : 'Dimensiune';
 }
 /* poziția implicită a ușii: spre interior și cu balamaua spre cel mai apropiat perete */
 function razaPana(m, r, exclus) {
@@ -751,6 +781,7 @@ function elimina(s) {
   if (s.tip === 'cota') schita.cote = schita.cote.filter(c => c.id !== s.id);
   if (s.tip === 'scara') schita.scari = schita.scari.filter(c => c.id !== s.id);
   if (s.tip === 'consumator') schita.consumatori = schita.consumatori.filter(c => c.id !== s.id);
+  if (s.tip === 'text') schita.texte = schita.texte.filter(c => c.id !== s.id);
   if (s.tip === 'conducta') schita.conducte = schita.conducte.filter(c => c.id !== s.id);
 }
 $('#aSterge').addEventListener('click', () => {
@@ -791,6 +822,7 @@ $('#aIntoarce').addEventListener('click', () => {
 });
 $('#aDim').addEventListener('click', async () => {
   const e = element(sel); if (!e) return;
+  if (sel.tip === 'text') { editeazaText(); return; }
   if (sel.tip === 'conducta') {
     const d = await alegeDiametru('Diametrul țevii', e.diam); if (d === null) return;
     const id0 = sel.id; modifica(() => { schita.conducte.find(q => q.id === id0).diam = d; }); return;
@@ -911,7 +943,8 @@ function dateExport() {
     cote: schita.cote.map(c => ({ id: c.id, x1: r1(c.x1), y1: r1(c.y1), x2: r1(c.x2), y2: r1(c.y2), val: c.val })),
     scari: schita.scari.map(c => ({ id: c.id, x1: r1(c.x1), y1: r1(c.y1), x2: r1(c.x2), y2: r1(c.y2), latime: r1(c.latime), trepte: c.trepte })),
     consumatori: schita.consumatori.map(c => ({ id: c.id, tip: c.tip, x: r1(c.x), y: r1(c.y), unghi: Math.round(((c.ang * 180 / Math.PI) % 360 + 360) % 360), perete: CONS[c.tip] && CONS[c.tip].peTeava ? undefined : peretePentru(c), conducta: CONS[c.tip] && CONS[c.tip].peTeava ? teavaPentru(c) : undefined, putere: c.putere || undefined, model: c.model || undefined })),
-    conducte: schita.conducte.map(t => ({ id: t.id, x1: r1(t.x1), y1: r1(t.y1), x2: r1(t.x2), y2: r1(t.y2), diametru: t.diam || undefined }))
+    conducte: schita.conducte.map(t => ({ id: t.id, x1: r1(t.x1), y1: r1(t.y1), x2: r1(t.x2), y2: r1(t.y2), diametru: t.diam || undefined })),
+    texte: schita.texte.map(t => ({ id: t.id, x: r1(t.x), y: r1(t.y), text: t.t }))
   };
 }
 function teavaPentru(c) {
