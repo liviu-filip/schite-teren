@@ -71,7 +71,6 @@
   <button data-unealta="cota">Cotă</button>
   <button data-unealta="text">Text</button>
   <button data-unealta="radiera">Radieră</button>
-  <button data-unealta="selectie">Selectează</button>
  </div>
 </div>
 <canvas id="c"></canvas>
@@ -654,7 +653,24 @@ cv.addEventListener('wheel', e => {
 }, { passive: false });
 
 /* ---------- uneltele ---------- */
+/* apăsare lungă (creionul nemișcat ~0,5 s pe un element) = selectează, apoi tras = mută; cu orice unealtă */
+const LUNG_MS = 500;
 function incepeActiune(pid, p, deget) {
+  if (unealta === 'selectie' || unealta === 'radiera' || unealta === 'text') { incepeUnealta(pid, p, deget); return; }
+  if (sel) { sel = null; actualizeazaActiuni(); }
+  const tinta = gasesteLa(p);
+  incepeUnealta(pid, p, deget);
+  if (!tinta || !act || act.pid !== pid) return;
+  const a = act;
+  a.lp = { p0: p, t: setTimeout(() => {
+    if (act !== a || !a.lp) return;
+    sel = tinta;
+    act = { pid: a.pid, deget: a.deget, unealta: 'muta', start: a.lp.p0, snap: JSON.stringify(schita), mutat: false };
+    try { navigator.vibrate && navigator.vibrate(25); } catch (e) {}
+    actualizeazaActiuni(); deseneaza();
+  }, LUNG_MS) };
+}
+function incepeUnealta(pid, p, deget) {
   if (unealta === 'selectie') {                  /* atingere = selectează; tras = mută */
     sel = gasesteLa(p); actualizeazaActiuni(); deseneaza();
     if (sel) act = { pid, deget, unealta: 'muta', start: p, snap: JSON.stringify(schita), mutat: false };
@@ -689,6 +705,7 @@ function incepeActiune(pid, p, deget) {
 }
 function continuaActiune(p) {
   if (!act) return;
+  if (act.lp && dist(p, act.lp.p0) * view.s > 8) { clearTimeout(act.lp.t); act.lp = null; }   /* a pornit să tragă: desen normal */
   if (act.unealta === 'radiera') { radiaza(p); return; }
   if (act.unealta === 'muta') { muta(p); return; }
   if (act.unealta === 'consumator') { act.cur = p; deseneaza(); return; }
@@ -699,6 +716,7 @@ function continuaActiune(p) {
 }
 async function termina() {
   const k = act; act = null;
+  if (k && k.lp) { clearTimeout(k.lp.t); k.lp = null; }
   if (!k || k.unealta === 'radiera') return;
   if (k.unealta === 'muta') { if (k.mutat) { salveaza(); actualizeazaActiuni(); } deseneaza(); return; }
   if (k.unealta === 'perete') {
